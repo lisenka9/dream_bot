@@ -14,10 +14,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
     user = update.effective_user
     
-    
     logging.info(f"New user: ID={user.id}, Name={user.first_name}, "
                  f"Username=@{user.username}, LastName={user.last_name}")
-    
     
     db.get_or_create_user(
         user_id=user.id,
@@ -25,11 +23,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         first_name=user.first_name or "",  
         last_name=user.last_name or ""  
     )
+    
     if user.first_name:
         greeting = f"🌟 Здравствуйте, {user.first_name}! 🌟"
     else:
         greeting = f"🌟 Здравствуйте, @{user.username}! 🌟"
-    
     
     try:
         short_caption = f"""{greeting} Рада видеть вас на курсе "**Путь к мечте. Пошаговая инструкция!**"
@@ -47,13 +45,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Курс рассчитан на самостоятельную, но очень увлекательную работу!
         """
-    await update.message.reply_text(
-        short_caption,
-        parse_mode='Markdown'
-    )
+        await update.message.reply_text(
+            short_caption,
+            parse_mode='Markdown'
+        )
         
-    welcome_text_1 = f"""    
-
+        welcome_text_1 = f"""    
 💡 Главный Секрет Исполнения Желаний:
 
 Я заметила простую закономерность: у людей, которые **умеют мечтать** и прикладывают **определенные усилия**, желания действительно сбываются! 🚀
@@ -62,13 +59,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Здесь сработало правило: **четко сформулировать желание, отпустить запрос во Вселенную и ориентироваться на конечный результат.**
         """
+        await update.message.reply_text(
+            welcome_text_1,
+            parse_mode='Markdown'
+        )
         
-    await update.message.reply_text(
-        welcome_text_1,
-        parse_mode='Markdown'
-    )
-    welcome_text_2 = f"""
-
+        welcome_text_2 = f"""
 🙏 Важная Составляющая: ВЕРА!
 
 Секрет не только в формулировке, но и в **искренней вере** в успех. А также — в **приложении действий** для реализации мечты.
@@ -77,13 +73,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ✨ Вы готовы открыть свой "**Путь к мечте**" и работать над собой следующие 7 дней?
         """
+        await update.message.reply_text(
+            welcome_text_2,
+            parse_mode='Markdown'
+        )
         
-    await update.message.reply_text(
-        welcome_text_2,
-        parse_mode='Markdown'
-    )
-    welcome_text_3 = f"""
-
+        welcome_text_3 = f"""
 🚀 Запускаем Путешествие!
 
 Вы уже познакомились со мной и узнали главную идею курса. Если вы согласны с принципами и готовы к серьезной работе — мы начинаем прямо сейчас.
@@ -94,8 +89,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Нажмите «Оплатить 599 ₽», чтобы получить первое задание уже сегодня!
 """
-        
-    await update.message.reply_text(
-        welcome_text_3,
-        parse_mode='Markdown'
-    )
+        await update.message.reply_text(
+            welcome_text_3,
+            parse_mode='Markdown'
+        )
+    
+    except Exception as e:
+        logging.error(f"❌ Error in start handler: {e}")

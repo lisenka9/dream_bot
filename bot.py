@@ -14,6 +14,7 @@ import asyncio
 import signal
 import handlers
 from config import BOT_TOKEN, PAYPAL_WEBHOOK_ID
+from database import db
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
