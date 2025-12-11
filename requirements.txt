@@ -1,0 +1,6 @@
+python-telegram-bot[webhooks]>=21.0
+psycopg2-binary
+python-dotenv
+flask
+pytz
+requests

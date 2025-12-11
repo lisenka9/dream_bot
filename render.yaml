@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: dream-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+  - type: worker
+    name: dream-bot-worker
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python keep_alive.py
