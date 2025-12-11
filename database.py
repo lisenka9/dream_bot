@@ -66,3 +66,5 @@ class DatabaseManager:
             raise
         finally:
             conn.close()
+
+db = DatabaseManager()
