@@ -47,12 +47,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Курс рассчитан на самостоятельную, но очень увлекательную работу!
         """
-        await update.message.reply_text(
-            short_caption,
-            parse_mode='Markdown'
-        )
+    await update.message.reply_text(
+        short_caption,
+        parse_mode='Markdown'
+    )
         
-        welcome_text_1 = f"""
+    welcome_text_1 = f"""    
 
 💡 Главный Секрет Исполнения Желаний:
 
@@ -63,11 +63,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Здесь сработало правило: **четко сформулировать желание, отпустить запрос во Вселенную и ориентироваться на конечный результат.**
         """
         
-        await update.message.reply_text(
-            welcome_text_1,
-            parse_mode='Markdown'
-        )
-        welcome_text_2 = f"""
+    await update.message.reply_text(
+        welcome_text_1,
+        parse_mode='Markdown'
+    )
+    welcome_text_2 = f"""
 
 🙏 Важная Составляющая: ВЕРА!
 
@@ -78,11 +78,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ✨ Вы готовы открыть свой "**Путь к мечте**" и работать над собой следующие 7 дней?
         """
         
-        await update.message.reply_text(
-            welcome_text_2,
-            parse_mode='Markdown'
-        )
-        welcome_text_3 = f"""
+    await update.message.reply_text(
+        welcome_text_2,
+        parse_mode='Markdown'
+    )
+    welcome_text_3 = f"""
 
 🚀 Запускаем Путешествие!
 
@@ -95,8 +95,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Нажмите «Оплатить 599 ₽», чтобы получить первое задание уже сегодня!
 """
         
-        await update.message.reply_text(
-            welcome_text_3,
-            parse_mode='Markdown'
-        )
-   
+    await update.message.reply_text(
+        welcome_text_3,
+        parse_mode='Markdown'
+    )
