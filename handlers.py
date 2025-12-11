@@ -93,7 +93,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Доступ к материалам (7 дней контента, доступ на 14 дней) откроется сразу после оплаты.
 
 Нажмите «Оплатить 599 ₽», чтобы получить первое задание уже сегодня!
-        """
+"""
         
         await update.message.reply_text(
             welcome_text_3,
