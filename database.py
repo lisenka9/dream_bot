@@ -80,10 +80,10 @@ class DatabaseManager:
             last_name = last_name or ""
             
             cursor.execute('''
-                INSERT INTO users (user_id, username, first_name, last_name, phone, registered_date)
+                INSERT INTO users (user_id, username, first_name, last_name, registered_date)
                 VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT (user_id) DO NOTHING
-            ''', (user_id, username, first_name, last_name, phone))
+            ''', (user_id, username, first_name, last_name))
             
             conn.commit()
             return True
@@ -93,5 +93,127 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def create_course_purchase(self, user_id, payment_method='paypal'):
+        """Создает запись о покупке курса"""
+        conn = self.get_connection()
+        if conn is None:
+            return False
+        
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                '''
+                INSERT INTO course_purchases (user_id, payment_method)
+                VALUES (%s, %s)
+                ''',
+                (user_id, payment_method)
+            )
+            
+            # Создаем запись о прогрессе
+            cursor.execute(
+                '''
+                INSERT INTO course_progress (user_id, current_day, last_message_date)
+                VALUES (%s, 1, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE
+                SET is_active = TRUE,
+                    current_day = 1,
+                    last_message_date = CURRENT_TIMESTAMP
+                ''',
+                (user_id,)
+            )
+            
+            conn.commit()
+            logging.info(f"✅ Course purchase created for user {user_id}")
+            return True
+        except Exception as e:
+            logging.error(f"❌ Error creating course purchase: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
+    def get_users_for_daily_messages(self):
+        """Возвращает пользователей, которым нужно отправить сообщения"""
+        conn = self.get_connection()
+        if conn is None:
+            return []
+        
+        cursor = conn.cursor()
+        try:
+            # Находим пользователей, у которых:
+            # 1. Курс активен (is_active = TRUE)
+            # 2. Прошло более 24 часов с последнего сообщения
+            # 3. Текущий день <= 7 (если 7+ дней - курс завершен)
+            cursor.execute('''
+                SELECT cp.user_id, cp.current_day
+                FROM course_progress cp
+                WHERE cp.is_active = TRUE
+                  AND cp.current_day <= 7
+                  AND (
+                    cp.last_message_date IS NULL
+                    OR cp.last_message_date < NOW() - INTERVAL '24 hours'
+                  )
+            ''')
+            
+            users = cursor.fetchall()
+            return users
+            
+        except Exception as e:
+            logging.error(f"❌ Error getting users for daily messages: {e}")
+            return []
+        finally:
+            conn.close()
+    
+    def get_course_content(self, day_number):
+        """Получает контент для конкретного дня"""
+        conn = self.get_connection()
+        if conn is None:
+            return None
+        
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                'SELECT messages FROM course_content WHERE day_number = %s',
+                (day_number,)
+            )
+            result = cursor.fetchone()
+            return result[0] if result else None
+        except Exception as e:
+            logging.error(f"❌ Error getting course content: {e}")
+            return None
+        finally:
+            conn.close()
+    
+    def update_user_progress(self, user_id, day_number):
+        """Обновляет прогресс пользователя после отправки сообщений"""
+        conn = self.get_connection()
+        if conn is None:
+            return False
+        
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                UPDATE course_progress
+                SET current_day = %s,
+                    last_message_date = CURRENT_TIMESTAMP
+                WHERE user_id = %s
+            ''', (day_number + 1, user_id))  # Переходим к следующему дню
+            
+            # Если день 7 завершен, отмечаем курс как неактивный
+            if day_number >= 7:
+                cursor.execute('''
+                    UPDATE course_progress
+                    SET is_active = FALSE
+                    WHERE user_id = %s
+                ''', (user_id,))
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            logging.error(f"❌ Error updating user progress: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
 
 db = DatabaseManager()
