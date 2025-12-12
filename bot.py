@@ -90,6 +90,8 @@ def setup_handlers(application):
     # Добавляем обработчики команд
     application.add_handler(CommandHandler("start", handlers.start))
 
+    application.add_handler(CallbackQueryHandler(handlers.button_handler))
+
 async def enhanced_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Улучшенный обработчик ошибок с обработкой конфликтов"""
     try:
