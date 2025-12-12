@@ -67,4 +67,30 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def get_or_create_user(self, user_id: int, username: str, 
+                          first_name: str, last_name: str) -> bool:
+        """Создает или получает пользователя"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            username = username or ""
+            first_name = first_name or "Пользователь"
+            last_name = last_name or ""
+            
+            cursor.execute('''
+                INSERT INTO users (user_id, username, first_name, last_name) 
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (user_id) DO NOTHING
+            ''', (user_id, username, first_name, last_name))
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            logging.error(f"❌ Error creating user: {e}")
+            return False
+        finally:
+            conn.close()
+
+
 db = DatabaseManager()
