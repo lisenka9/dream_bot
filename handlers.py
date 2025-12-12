@@ -155,9 +155,8 @@ async def show_yookassa_payment(query, context: ContextTypes.DEFAULT_TYPE):
 Если доступ не открылся, нажмите *«Проверить оплату»*.
     """
     
-    # Убираем предыдущую клавиатуру
-    await query.edit_message_text(
-        text=payment_text,
+    await update.message.reply_text(
+        payment_text,
         reply_markup=keyboard.get_yookassa_payment_keyboard(),
         parse_mode='Markdown'
     )
@@ -176,9 +175,8 @@ async def show_paypal_payment(query, context: ContextTypes.DEFAULT_TYPE):
 Если доступ не открылся, нажмите *«Проверить оплату»*.
     """
     
-    # Убираем предыдущую клавиатуру
-    await query.edit_message_text(
-        text=payment_text,
+    await update.message.reply_text(
+        payment_text,
         reply_markup=keyboard.get_paypal_payment_keyboard(),
         parse_mode='Markdown'
     )
