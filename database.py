@@ -57,7 +57,7 @@ class DatabaseManager:
                     first_name TEXT,
                     last_name TEXT,
                     email TEXT,
-                    registered_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    registered_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
         except Exception as e:
