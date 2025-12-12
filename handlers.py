@@ -16,13 +16,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logging.info(f"New user: ID={user.id}, Name={user.first_name}, "
                  f"Username=@{user.username}, LastName={user.last_name}")
-    
-    db.get_or_create_user(
-        user_id=user.id,
-        username=user.username or "",  
-        first_name=user.first_name or "",  
-        last_name=user.last_name or ""  
-    )
+    try:
+        db.get_or_create_user(
+            user_id=user.id,
+            username=user.username or "",  
+            first_name=user.first_name or "",  
+            last_name=user.last_name or ""  
+        )
+    except Exception as e:
+        logging.error(f"Database error in /start: {e}")
+        # Можно отправить пользователю сообщение об ошибке
+        await update.message.reply_text("⚠️ Технические неполадки. Попробуйте позже.")
+        return
     
     if user.first_name:
         greeting = f"🌟 Здравствуйте, {user.first_name}! 🌟"
