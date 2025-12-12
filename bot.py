@@ -16,6 +16,37 @@ import handlers
 from config import BOT_TOKEN, PAYPAL_WEBHOOK_ID
 from database import db
 
+class GracefulShutdown:
+    def __init__(self):
+        self.shutdown_event = threading.Event()
+        
+    def signal_handler(self, signum, frame):
+        """Обработчик сигналов для graceful shutdown"""
+        logger.info(f"🛑 Received shutdown signal {signum}. Starting graceful shutdown...")
+        self.shutdown_event.set()
+        
+        # Уведомляем администраторов
+        self.notify_admins_about_shutdown(signum)
+    
+    def notify_admins_about_shutdown(self, signum):
+        """Уведомляет администраторов о shutdown"""
+        try:
+            from telegram import Bot
+            from config import BOT_TOKEN, ADMIN_IDS
+            
+            bot = Bot(token=BOT_TOKEN)
+            message = f"🛑 Bot received shutdown signal {signum} at {datetime.now()}"
+            
+            for admin_id in ADMIN_IDS:
+                try:
+                    bot.send_message(chat_id=admin_id, text=message)
+                except Exception as e:
+                    logger.error(f"Failed to notify admin {admin_id}: {e}")
+        except Exception as e:
+            logger.error(f"Could not send shutdown notification: {e}")
+
+shutdown_manager = GracefulShutdown()
+
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
