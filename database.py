@@ -81,7 +81,7 @@ class DatabaseManager:
             
             cursor.execute('''
                 INSERT INTO users (user_id, username, first_name, last_name, registered_date)
-                VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT (user_id) DO NOTHING
             ''', (user_id, username, first_name, last_name))
             
