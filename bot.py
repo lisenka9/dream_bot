@@ -90,6 +90,25 @@ def setup_handlers(application):
     # Добавляем обработчики команд
     application.add_handler(CommandHandler("start", handlers.start))
 
+async def enhanced_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Улучшенный обработчик ошибок с обработкой конфликтов"""
+    try:
+        error = context.error
+        
+        # Обрабатываем конфликты отдельно
+        if isinstance(error, Exception) and "Conflict" in str(error):
+            logger.error("💥 CONFLICT: Multiple bot instances detected!")
+            logger.info("🔄 Waiting before restart...")
+            # Не логируем полный traceback для конфликтов
+            return
+        
+        # Логируем другие ошибки
+        logger.error(f"Exception while handling an update: {error}")
+        logger.error("Full traceback:", exc_info=error)
+        
+    except Exception as e:
+        logger.error(f"Error in enhanced error handler: {e}")
+
 def run_bot():
     """Запускает бота в основном потоке"""
     max_retries = 3
