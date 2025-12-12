@@ -13,7 +13,7 @@ from telegram import Update
 import asyncio
 import signal
 import handlers
-from config import BOT_TOKEN, PAYPAL_WEBHOOK_ID
+from config import BOT_TOKEN, 
 from database import db
 
 logging.basicConfig(
