@@ -8,7 +8,40 @@ import uuid
 import json
 from database import db 
 from config import ADMIN_IDS
-#import keyboard
+import keyboard
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик нажатий на кнопки"""
+    query = update.callback_query
+    await query.answer()
+    logging.info(f"🔧 DEBUG: button_handler called with: {query.data}")
+    
+    # ✅ Защита от множественных нажатий
+    user_id = query.from_user.id
+    current_time = datetime.now().timestamp()
+    
+    if 'last_button_click' in context.user_data:
+        last_click = context.user_data['last_button_click']
+        if current_time - last_click < 1:  # 1 секунды между нажатиями
+            logging.info(f"⚡ Fast click protection for user {user_id}")
+            return
+    
+    context.user_data['last_button_click'] = current_time
+    
+    # ✅ Логируем какая кнопка нажата
+    logging.info(f"🔄 Button pressed: {query.data} by user {user_id}")
+    
+    if query.data == "payment_yookassa":
+        await show_yookassa_payment(query, context)
+    
+    elif query.data == "payment_paypal":
+        await show_paypal_payment(query, context)
+
+    elif query.data == "check_yookassa_payment":
+        await check_yookassa_payment(query, context)
+
+    elif query.data == "check_paypal_payment":
+        await check_paypal_payment(query, context)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
@@ -107,3 +140,59 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     except Exception as e:
         logging.error(f"❌ Error in start handler: {e}")
+
+async def show_yookassa_payment(query, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает информацию об оплате через ЮKassa"""
+    payment_text = """
+💳 *Оплата из России*
+
+✅ *Стоимость:* 599 рублей
+
+Нажмите кнопку *«Оплатить 599₽»* для перехода к оплате.
+
+После успешной оплаты доступ к курсу откроется автоматически в течение 1-2 минут.
+
+Если доступ не открылся, нажмите *«Проверить оплату»*.
+    """
+    
+    # Убираем предыдущую клавиатуру
+    await query.edit_message_text(
+        text=payment_text,
+        reply_markup=keyboard.get_yookassa_payment_keyboard(),
+        parse_mode='Markdown'
+    )
+
+async def show_paypal_payment(query, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает информацию об оплате через PayPal"""
+    payment_text = """
+💳 *Оплата из любой точки мира*
+
+✅ *Стоимость:* 30 шекелей (₪)
+
+Нажмите кнопку *«Оплатить 30₪»* для перехода к оплате.
+
+После успешной оплаты доступ к курсу откроется автоматически в течение 1-2 минут.
+
+Если доступ не открылся, нажмите *«Проверить оплату»*.
+    """
+    
+    # Убираем предыдущую клавиатуру
+    await query.edit_message_text(
+        text=payment_text,
+        reply_markup=keyboard.get_paypal_payment_keyboard(),
+        parse_mode='Markdown'
+    )
+
+async def check_yookassa_payment(query, context: ContextTypes.DEFAULT_TYPE):
+    """Проверяет статус оплаты через ЮKassa (заглушка)"""
+    await query.answer(
+        text="🔍 Проверяем статус оплаты...\n\nПлатеж пока не найден. Попробуйте позже.",
+        show_alert=True
+    )
+
+async def check_paypal_payment(query, context: ContextTypes.DEFAULT_TYPE):
+    """Проверяет статус оплаты через PayPal (заглушка)"""
+    await query.answer(
+        text="🔍 Проверяем статус оплаты...\n\nПлатеж пока не найден. Попробуйте позже.",
+        show_alert=True
+    )
