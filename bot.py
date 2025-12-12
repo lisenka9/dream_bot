@@ -112,7 +112,6 @@ def run_bot():
             # Инициализация базы данных
             logger.info("🔄 Initializing database...")
             db.init_database()
-            db.update_existing_users_limits()
             
             # Создаем приложение
             application = Application.builder().token(BOT_TOKEN).build()
