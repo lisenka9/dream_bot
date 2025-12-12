@@ -57,7 +57,8 @@ class DatabaseManager:
                     first_name TEXT,
                     last_name TEXT,
                     email TEXT,
-                    registered_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    registered_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    phone TEXT
                 )
             ''')
         except Exception as e:
@@ -79,10 +80,10 @@ class DatabaseManager:
             last_name = last_name or ""
             
             cursor.execute('''
-                INSERT INTO users (user_id, username, first_name, last_name) 
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO users (user_id, username, first_name, last_name, phone, registered_date)
+                VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT (user_id) DO NOTHING
-            ''', (user_id, username, first_name, last_name))
+            ''', (user_id, username, first_name, last_name, phone))
             
             conn.commit()
             return True
