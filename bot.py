@@ -11,8 +11,6 @@ import sys
 from datetime import datetime, timedelta
 from telegram import Update
 import asyncio
-import hashlib
-import hmac
 import signal
 import handlers
 from config import BOT_TOKEN, PAYPAL_WEBHOOK_ID

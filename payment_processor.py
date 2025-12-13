@@ -4,7 +4,6 @@ import requests
 import json
 import os
 from datetime import datetime
-import hashlib
 import base64
 
 logger = logging.getLogger(__name__)
