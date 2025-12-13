@@ -8,24 +8,8 @@ def get_payment_method_keyboard():
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_yookassa_initial_keyboard():
-    """Первая клавиатура для ЮKassa - сразу оплата"""
-    keyboard = [
-        [InlineKeyboardButton("💳 Оплатить 599₽", callback_data="process_yookassa_payment")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_payment_method")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_paypal_initial_keyboard():
-    """Первая клавиатура для PayPal - сразу оплата"""
-    keyboard = [
-        [InlineKeyboardButton("💳 Оплатить 30₪", callback_data="process_paypal_payment")],
-        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_payment_method")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
 def get_yookassa_payment_keyboard(payment_url, payment_id):
-    """Клавиатура после создания платежа ЮKassa"""
+    """Клавиатура после создания платежа ЮKassa - сразу с ссылкой"""
     keyboard = [
         [InlineKeyboardButton("💳 Перейти к оплате 599₽", url=payment_url)],
         [InlineKeyboardButton("🔄 Проверить оплату", callback_data=f"check_yookassa_{payment_id}")],
@@ -34,7 +18,7 @@ def get_yookassa_payment_keyboard(payment_url, payment_id):
     return InlineKeyboardMarkup(keyboard)
 
 def get_paypal_payment_keyboard(payment_url, payment_id):
-    """Клавиатура после создания платежа PayPal"""
+    """Клавиатура после создания платежа PayPal - сразу с ссылкой"""
     keyboard = [
         [InlineKeyboardButton("💳 Перейти к оплате 30₪", url=payment_url)],
         [InlineKeyboardButton("🔄 Проверить оплату", callback_data=f"check_paypal_{payment_id}")],

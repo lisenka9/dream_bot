@@ -36,16 +36,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logging.info(f"🔄 Button pressed: {query.data} by user {user_id}")
     
     if query.data == "payment_yookassa":
-        await show_yookassa_initial(query, context)
+        await create_yookassa_payment(query, context)  
     
     elif query.data == "payment_paypal":
-        await show_paypal_initial(query, context)
-    
-    elif query.data == "process_yookassa_payment":
-        await create_yookassa_payment(query, context)
-    
-    elif query.data == "process_paypal_payment":
-        await create_paypal_payment(query, context)
+        await create_paypal_payment(query, context) 
     
     elif query.data.startswith("check_yookassa_"):
         await check_specific_payment(query, context, "yookassa")
@@ -181,44 +175,8 @@ async def show_payment_method(query, context: ContextTypes.DEFAULT_TYPE, method:
     
     await query.edit_message_text(text=text, reply_markup=keyboard, parse_mode='Markdown')
 
-async def show_yookassa_initial(query, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает первый экран с кнопкой оплаты для ЮKassa"""
-    payment_text = """
-💳 *Оплата из России*
-✅ *Стоимость:* 599 рублей
-
-Нажмите кнопку *«Оплатить 599₽»* для перехода к оплате.
-
-После успешной оплаты доступ к курсу откроется автоматически в течение 1-2 минут.
-"""
-    
-    # Отправляем НОВОЕ сообщение, не редактируем старое
-    await query.message.reply_text(
-        payment_text,
-        reply_markup=keyboard.get_yookassa_initial_keyboard(),
-        parse_mode='Markdown'
-    )
-
-async def show_paypal_initial(query, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает первый экран с кнопкой оплаты для PayPal"""
-    payment_text = """
-💳 *Оплата из любой точки мира*
-✅ *Стоимость:* 30 шекелей (₪)
-
-Нажмите кнопку *«Оплатить 30₪»* для перехода к оплате.
-
-После успешной оплаты доступ к курсу откроется автоматически в течение 1-2 минут.
-"""
-    
-    # Отправляем НОВОЕ сообщение
-    await query.message.reply_text(
-        payment_text,
-        reply_markup=keyboard.get_paypal_initial_keyboard(),
-        parse_mode='Markdown'
-    )
-
 async def create_yookassa_payment(query, context: ContextTypes.DEFAULT_TYPE):
-    """Создает платеж ЮKassa и показывает ссылку"""
+    """Создает платеж ЮKassa и сразу показывает ссылку"""
     user_id = query.from_user.id
     
     # Создаем платеж
@@ -229,16 +187,12 @@ async def create_yookassa_payment(query, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['last_payment_id'] = payment_id
         
         payment_text = f"""
-✅ *Платеж создан!*
-
 💳 *Оплата через ЮKassa*
 ✅ *Стоимость:* 599 рублей
 
 Нажмите кнопку ниже для перехода к оплате.
 
-После успешной оплаты доступ откроется автоматически в течение 1-2 минут.
-
-🆔 *ID платежа:* `{payment_id}`
+После успешной оплаты доступ к курсу откроется автоматически в течение 1-2 минут.
         """
         
         # Отправляем НОВОЕ сообщение с ссылкой
@@ -251,7 +205,7 @@ async def create_yookassa_payment(query, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("❌ Ошибка создания платежа", show_alert=True)
 
 async def create_paypal_payment(query, context: ContextTypes.DEFAULT_TYPE):
-    """Создает платеж PayPal и показывает ссылку"""
+    """Создает платеж PayPal и сразу показывает ссылку"""
     user_id = query.from_user.id
     
     # Создаем платеж
@@ -262,16 +216,13 @@ async def create_paypal_payment(query, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['last_payment_id'] = payment_id
         
         payment_text = f"""
-✅ *Платеж создан!*
-
 💳 *Оплата через PayPal*
 ✅ *Стоимость:* 30 шекелей (₪)
 
 Нажмите кнопку ниже для перехода к оплате.
 
-После успешной оплаты доступ откроется автоматически в течение 1-2 минут.
+После успешной оплаты доступ к курсу откроется автоматически в течение 1-2 минут.
 
-🆔 *ID платежа:* `{payment_id}`
         """
         
         # Отправляем НОВОЕ сообщение с ссылкой
