@@ -4,3 +4,5 @@ python-dotenv
 flask
 pytz
 requests
+hmac
+hashlib

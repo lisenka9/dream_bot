@@ -11,6 +11,8 @@ import sys
 from datetime import datetime, timedelta
 from telegram import Update
 import asyncio
+import hashlib
+import hmac
 import signal
 import handlers
 from config import BOT_TOKEN, PAYPAL_WEBHOOK_ID
@@ -62,6 +64,141 @@ def home():
 @app.route('/health')
 def health_check():
     return "✅ Bot is alive!", 200
+
+@app.route('/webhook/yookassa', methods=['POST'])
+def yookassa_webhook():
+    """Вебхук от ЮKassa с реальной проверкой"""
+    try:
+        # Получаем подпись
+        signature = request.headers.get('Content-Signature', '')
+        
+        # Проверяем подпись
+        is_valid = payment_processor.verify_yookassa_webhook(
+            request.get_data(),
+            signature
+        )
+        
+        if not is_valid:
+            logger.warning("⚠️ Invalid YooKassa webhook signature")
+            return 'Invalid signature', 400
+        
+        data = request.get_json()
+        event = data.get('event')
+        payment_id = data.get('object', {}).get('id')
+        
+        logger.info(f"📥 YooKassa webhook received: {event} for payment {payment_id}")
+        
+        if event == 'payment.succeeded':
+            # Обновляем статус в БД
+            user_id = db.update_payment_status(payment_id, 'success')
+            
+            if user_id:
+                logger.info(f"✅ Payment {payment_id} succeeded for user {user_id}")
+                
+                # Немедленно активируем курс
+                from handlers import activate_course_after_payment
+                
+                # Получаем application из контекста
+                if telegram_app:
+                    # Запускаем в отдельном потоке
+                    import threading
+                    thread = threading.Thread(
+                        target=lambda: asyncio.run(
+                            activate_course_after_payment(user_id, payment_id, telegram_app)
+                        )
+                    )
+                    thread.start()
+                    
+                    logger.info(f"🚀 Course activation started for user {user_id}")
+                else:
+                    logger.error("❌ Telegram app not initialized")
+            
+            return 'OK', 200
+            
+        elif event == 'payment.canceled':
+            db.update_payment_status(payment_id, 'canceled')
+            logger.info(f"❌ Payment {payment_id} canceled")
+            return 'OK', 200
+            
+        elif event == 'payment.waiting_for_capture':
+            db.update_payment_status(payment_id, 'pending')
+            logger.info(f"⏳ Payment {payment_id} waiting for capture")
+            return 'OK', 200
+            
+    except Exception as e:
+        logger.error(f"❌ YooKassa webhook error: {e}")
+        return 'Error', 500
+
+@app.route('/webhook/paypal', methods=['POST'])
+def paypal_webhook():
+    """Вебхук от PayPal с проверкой"""
+    try:
+        # Проверяем вебхук
+        is_valid = payment_processor.verify_paypal_webhook(
+            request.get_data(),
+            request.headers
+        )
+        
+        if not is_valid:
+            logger.warning("⚠️ Invalid PayPal webhook signature")
+            return 'Invalid signature', 400
+        
+        data = request.get_json()
+        event_type = data.get('event_type')
+        resource = data.get('resource', {})
+        
+        logger.info(f"📥 PayPal webhook: {event_type}")
+        
+        if event_type == 'PAYMENT.CAPTURE.COMPLETED':
+            payment_id = resource.get('id')
+            custom_id = resource.get('custom_id')  # Это наш user_id
+            
+            if payment_id and custom_id:
+                # Обновляем статус платежа
+                db.update_payment_status(payment_id, 'success')
+                
+                try:
+                    user_id = int(custom_id)
+                    # Активируем курс
+                    from handlers import activate_course_after_payment
+                    
+                    if telegram_app:
+                        import threading
+                        thread = threading.Thread(
+                            target=lambda: asyncio.run(
+                                activate_course_after_payment(user_id, payment_id, telegram_app)
+                            )
+                        )
+                        thread.start()
+                        logger.info(f"✅ PayPal payment {payment_id} activated for user {user_id}")
+                        
+                except ValueError as e:
+                    logger.error(f"❌ Invalid user_id in PayPal webhook: {custom_id}")
+        
+        return 'OK', 200
+        
+    except Exception as e:
+        logger.error(f"❌ PayPal webhook error: {e}")
+        return 'Error', 500
+
+def activate_course_thread(user_id: int, payment_id: str):
+    """Активирует курс в отдельном потоке"""
+    try:
+        from handlers import activate_course_after_payment
+        
+        # Создаем event loop для асинхронной функции
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Запускаем активацию курса
+        loop.run_until_complete(
+            activate_course_after_payment(user_id, payment_id, telegram_app)
+        )
+        
+        loop.close()
+        
+    except Exception as e:
+        logger.error(f"Error in activation thread: {e}")
 
 def ping_self():
     """Пингует собственный health endpoint"""

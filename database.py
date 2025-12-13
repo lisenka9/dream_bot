@@ -216,4 +216,93 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def create_payment(self, user_id, payment_id, amount, currency, payment_method):
+        """Создает запись о платеже"""
+        conn = self.get_connection()
+        if not conn:
+            return False
+        
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO payments (user_id, payment_id, amount, currency, payment_method, status)
+                VALUES (%s, %s, %s, %s, %s, 'pending')
+            ''', (user_id, payment_id, amount, currency, payment_method))
+            conn.commit()
+            return True
+        except Exception as e:
+            logging.error(f"❌ Error creating payment: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def update_payment_status(self, payment_id, status):
+        """Обновляет статус платежа"""
+        conn = self.get_connection()
+        if not conn:
+            return False
+        
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE payments 
+                SET status = %s, completed_at = CURRENT_TIMESTAMP 
+                WHERE payment_id = %s
+            ''', (status, payment_id))
+            
+            if cursor.rowcount > 0:
+                conn.commit()
+                # Получаем user_id для отправки уведомления
+                cursor.execute('SELECT user_id FROM payments WHERE payment_id = %s', (payment_id,))
+                user_id = cursor.fetchone()[0]
+                return user_id
+            return None
+        except Exception as e:
+            logging.error(f"❌ Error updating payment: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_user_payment_status(self, user_id):
+        """Проверяет, есть ли успешный платеж у пользователя"""
+        conn = self.get_connection()
+        if not conn:
+            return False
+        
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT status FROM payments 
+                WHERE user_id = %s AND status = 'success'
+                ORDER BY created_at DESC LIMIT 1
+            ''', (user_id,))
+            result = cursor.fetchone()
+            return result is not None
+        except Exception as e:
+            logging.error(f"❌ Error checking payment: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def is_course_active(self, user_id):
+        """Проверяет, активен ли курс у пользователя"""
+        conn = self.get_connection()
+        if not conn:
+            return False
+        
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT is_active FROM course_progress 
+                WHERE user_id = %s 
+                AND is_active = TRUE
+            ''', (user_id,))
+            
+            return cursor.fetchone() is not None
+        except Exception as e:
+            logging.error(f"Error checking course status: {e}")
+            return False
+        finally:
+            conn.close()
+
 db = DatabaseManager()

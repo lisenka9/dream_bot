@@ -11,7 +11,7 @@ def get_payment_method_keyboard():
 def get_yookassa_payment_keyboard():
     """Клавиатура для оплаты через ЮKassa"""
     keyboard = [
-        [InlineKeyboardButton("💳 Оплатить 599₽", callback_data="process_yookassa_payment")],
+        [InlineKeyboardButton("💳 Оплатить 599₽", url=payment_url)],
         [InlineKeyboardButton("🔄 Проверить оплату", callback_data="check_yookassa_payment")]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -19,7 +19,7 @@ def get_yookassa_payment_keyboard():
 def get_paypal_payment_keyboard():
     """Клавиатура для оплаты через PayPal"""
     keyboard = [
-        [InlineKeyboardButton("💳 Оплатить 30₪", callback_data="process_paypal_payment")],
+        [InlineKeyboardButton("💳 Оплатить 30₪", url=payment_url)],
         [InlineKeyboardButton("🔄 Проверить оплату", callback_data="check_paypal_payment")]
     ]
     return InlineKeyboardMarkup(keyboard)
