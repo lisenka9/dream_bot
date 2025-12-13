@@ -268,21 +268,28 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
                 
         elif status == "pending":
             logging.info(f"⏳ Payment still pending for {payment_id}")
+            # ОБНОВЛЕНО: Добавляем show_alert=True
             await query.answer(
                 "⏳ Платеж еще обрабатывается. Попробуйте через 2 минуты.",
                 show_alert=True
             )
-        else:
-            logging.warning(f"❌ Payment not found or canceled: {payment_id}")
+        elif status == "not_found":
+            logging.warning(f"❌ Payment not found: {payment_id}")
             await query.answer(
-                "❌ Платеж не найден или отменен",
+                "❌ Платеж не найден. Возможно, он еще не создан.",
+                show_alert=True
+            )
+        else:
+            logging.warning(f"❌ Payment canceled or failed: {payment_id}")
+            await query.answer(
+                "❌ Платеж отменен или не прошел",
                 show_alert=True
             )
             
     except Exception as e:
         logging.error(f"❌ Error in check_specific_payment: {e}", exc_info=True)
         await query.answer(
-            "❌ Ошибка проверки платежа",
+            "❌ Ошибка проверки платежа. Попробуйте позже.",
             show_alert=True
         )
 
