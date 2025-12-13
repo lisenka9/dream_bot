@@ -196,25 +196,117 @@ class PaymentProcessor:
             return False
 
     def check_payment_status(self, payment_id):
-        """Проверяет статус платежа из БД"""
+        """Проверяет статус платежа"""
+        logging.info(f"🔍 Checking payment status for: {payment_id}")
+        
+        # Сначала проверяем в БД
         conn = self.db.get_connection()
         if not conn:
+            logging.error("❌ No database connection")
             return "pending"
         
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT status FROM payments WHERE payment_id = %s",
+                "SELECT status, payment_method FROM payments WHERE payment_id = %s",
                 (payment_id,)
             )
             result = cursor.fetchone()
-            return result[0] if result else "pending"
+            
+            if result:
+                status, payment_method = result
+                logging.info(f"🔍 Found in DB: status={status}, method={payment_method}")
+                
+                # Если статус pending и это PayPal, проверяем через API
+                if status == "pending" and payment_method == "paypal":
+                    logging.info(f"🔍 Checking PayPal payment via API: {payment_id}")
+                    api_status = self.check_paypal_payment_api(payment_id)
+                    if api_status != status:
+                        logging.info(f"🔍 API returned new status: {api_status}")
+                    return api_status
+                    
+                return status
+            else:
+                logging.warning(f"❌ Payment not found in DB: {payment_id}")
+                
+                # Попробуем найти по другому формату ID
+                # Иногда PayPal возвращает другой ID
+                cursor.execute(
+                    "SELECT payment_id, status FROM payments WHERE payment_id LIKE %s",
+                    (f"%{payment_id}%",)
+                )
+                similar = cursor.fetchone()
+                if similar:
+                    similar_id, similar_status = similar
+                    logging.info(f"🔍 Found similar payment: {similar_id} with status {similar_status}")
+                    return similar_status
+                    
+                return "not_found"
+                
         except Exception as e:
-            logger.error(f"❌ Error checking payment status: {e}")
-            return "pending"
+            logging.error(f"❌ Error checking payment status: {e}")
+            return "error"
         finally:
             conn.close()
-    
+
+    def check_paypal_payment_api(self, payment_id):
+        """Проверяет платеж PayPal через API"""
+        try:
+            # Получаем access token
+            auth_response = requests.post(
+                "https://api-m.paypal.com/v1/oauth2/token",
+                auth=(self.paypal_client_id, self.paypal_client_secret),
+                headers={"Accept": "application/json"},
+                data={"grant_type": "client_credentials"},
+                timeout=30
+            )
+            
+            if auth_response.status_code != 200:
+                logging.error(f"PayPal auth failed: {auth_response.text}")
+                return "pending"
+                
+            access_token = auth_response.json()["access_token"]
+            
+            # Проверяем статус платежа
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}"
+            }
+            
+            response = requests.get(
+                f"https://api-m.paypal.com/v2/checkout/orders/{payment_id}",
+                headers=headers,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                status = data.get("status", "").upper()
+                
+                if status == "COMPLETED":
+                    # Обновляем статус в БД
+                    conn = self.db.get_connection()
+                    if conn:
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "UPDATE payments SET status = 'success' WHERE payment_id = %s",
+                            (payment_id,)
+                        )
+                        conn.commit()
+                        conn.close()
+                    return "success"
+                elif status in ["APPROVED", "CREATED"]:
+                    return "pending"
+                else:
+                    return "failed"
+            else:
+                logging.error(f"PayPal API error: {response.status_code} - {response.text}")
+                return "pending"
+                
+        except Exception as e:
+            logging.error(f"PayPal API check error: {e}")
+            return "pending"
+
     def verify_yookassa_webhook(self, request_body, signature):
         """Проверяет подпись вебхука от ЮKassa"""
         try:

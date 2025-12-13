@@ -236,35 +236,53 @@ async def create_paypal_payment(query, context: ContextTypes.DEFAULT_TYPE):
 
 async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, method: str):
     """Проверяет конкретный платеж"""
+    logging.info(f"🔍 Starting check_specific_payment: {method}")
+    
     # Извлекаем payment_id из callback_data
     payment_id = query.data.replace(f"check_{method}_", "")
+    logging.info(f"🔍 Payment ID to check: {payment_id}")
     
-    # Проверяем статус платежа
-    status = payment_processor.check_payment_status(payment_id)
-    
-    if status == "success":
-        # Активируем курс
-        await activate_course_after_payment(
-            query.from_user.id,
-            payment_id,
-            method,
-            context.application
-        )
+    try:
+        # Проверяем статус платежа
+        logging.info(f"🔍 Calling check_payment_status for {payment_id}")
+        status = payment_processor.check_payment_status(payment_id)
+        logging.info(f"🔍 Payment status: {status}")
         
-        # Удаляем сообщение с кнопкой проверки
-        try:
-            await query.delete_message()
-        except:
-            pass
+        if status == "success":
+            logging.info(f"✅ Payment successful! Activating course for user {query.from_user.id}")
             
-    elif status == "pending":
+            # Активируем курс
+            await activate_course_after_payment(
+                query.from_user.id,
+                payment_id,
+                method,
+                context.application
+            )
+            
+            # Удаляем сообщение с кнопкой проверки
+            try:
+                await query.delete_message()
+                logging.info(f"✅ Message deleted for payment {payment_id}")
+            except Exception as e:
+                logging.error(f"❌ Error deleting message: {e}")
+                
+        elif status == "pending":
+            logging.info(f"⏳ Payment still pending for {payment_id}")
+            await query.answer(
+                "⏳ Платеж еще обрабатывается. Попробуйте через 2 минуты.",
+                show_alert=True
+            )
+        else:
+            logging.warning(f"❌ Payment not found or canceled: {payment_id}")
+            await query.answer(
+                "❌ Платеж не найден или отменен",
+                show_alert=True
+            )
+            
+    except Exception as e:
+        logging.error(f"❌ Error in check_specific_payment: {e}", exc_info=True)
         await query.answer(
-            "⏳ Платеж еще обрабатывается. Попробуйте через 2 минуты.",
-            show_alert=True
-        )
-    else:
-        await query.answer(
-            "❌ Платеж не найден или отменен",
+            "❌ Ошибка проверки платежа",
             show_alert=True
         )
 
