@@ -6,6 +6,7 @@ import io
 from datetime import datetime, date
 import uuid
 import json
+import asyncio
 from payment_processor import PaymentProcessor
 from database import db 
 from config import ADMIN_IDS
@@ -34,23 +35,26 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ✅ Логируем какая кнопка нажата
     logging.info(f"🔄 Button pressed: {query.data} by user {user_id}")
     
-    if query.data.startswith("process_"):
-        if "yookassa" in query.data:
-            await create_yookassa_payment(query, context)
-        elif "paypal" in query.data:
-            await create_paypal_payment(query, context)
-            
-    elif query.data.startswith("check_"):
-        if "yookassa" in query.data:
-            await check_specific_payment(query, context, "yookassa")
-        elif "paypal" in query.data:
-            await check_specific_payment(query, context, "paypal")
+    if query.data == "payment_yookassa":
+        await show_yookassa_initial(query, context)
     
-    elif query.data == "payment_yookassa":
-        await show_payment_method(query, context, "yookassa")
-        
     elif query.data == "payment_paypal":
-        await show_payment_method(query, context, "paypal")
+        await show_paypal_initial(query, context)
+    
+    elif query.data == "process_yookassa_payment":
+        await create_yookassa_payment(query, context)
+    
+    elif query.data == "process_paypal_payment":
+        await create_paypal_payment(query, context)
+    
+    elif query.data.startswith("check_yookassa_"):
+        await check_specific_payment(query, context, "yookassa")
+    
+    elif query.data.startswith("check_paypal_"):
+        await check_specific_payment(query, context, "paypal")
+    
+    elif query.data == "back_to_payment_method":
+        await back_to_payment_methods(query, context)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
@@ -177,56 +181,105 @@ async def show_payment_method(query, context: ContextTypes.DEFAULT_TYPE, method:
     
     await query.edit_message_text(text=text, reply_markup=keyboard, parse_mode='Markdown')
 
+async def show_yookassa_initial(query, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает первый экран с кнопкой оплаты для ЮKassa"""
+    payment_text = """
+💳 *Оплата из России*
+✅ *Стоимость:* 599 рублей
+
+Нажмите кнопку *«Оплатить 599₽»* для перехода к оплате.
+
+После успешной оплаты доступ к курсу откроется автоматически в течение 1-2 минут.
+"""
+    
+    # Отправляем НОВОЕ сообщение, не редактируем старое
+    await query.message.reply_text(
+        payment_text,
+        reply_markup=keyboard.get_yookassa_initial_keyboard(),
+        parse_mode='Markdown'
+    )
+
+async def show_paypal_initial(query, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает первый экран с кнопкой оплаты для PayPal"""
+    payment_text = """
+💳 *Оплата из любой точки мира*
+✅ *Стоимость:* 30 шекелей (₪)
+
+Нажмите кнопку *«Оплатить 30₪»* для перехода к оплате.
+
+После успешной оплаты доступ к курсу откроется автоматически в течение 1-2 минут.
+"""
+    
+    # Отправляем НОВОЕ сообщение
+    await query.message.reply_text(
+        payment_text,
+        reply_markup=keyboard.get_paypal_initial_keyboard(),
+        parse_mode='Markdown'
+    )
+
 async def create_yookassa_payment(query, context: ContextTypes.DEFAULT_TYPE):
-    """Создает платеж в ЮKassa"""
+    """Создает платеж ЮKassa и показывает ссылку"""
     user_id = query.from_user.id
+    
+    # Создаем платеж
     payment_url, payment_id = payment_processor.create_yookassa_payment(user_id)
     
     if payment_url:
-        # Сохраняем payment_id в БД и контексте
+        # Сохраняем payment_id для проверки
         context.user_data['last_payment_id'] = payment_id
         
-        text = f"""
+        payment_text = f"""
+✅ *Платеж создан!*
+
 💳 *Оплата через ЮKassa*
 ✅ *Стоимость:* 599 рублей
+
 Нажмите кнопку ниже для перехода к оплате.
-После успешной оплаты доступ откроется автоматически.
+
+После успешной оплаты доступ откроется автоматически в течение 1-2 минут.
+
 🆔 *ID платежа:* `{payment_id}`
-"""
+        """
         
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("💳 Оплатить 599₽", url=payment_url)],
-            [InlineKeyboardButton("🔄 Проверить оплату", callback_data=f"check_yookassa_{payment_id}")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="payment_yookassa")]
-        ])
-        
-        await query.edit_message_text(text=text, reply_markup=keyboard, parse_mode='Markdown')
+        # Отправляем НОВОЕ сообщение с ссылкой
+        await query.message.reply_text(
+            payment_text,
+            reply_markup=keyboard.get_yookassa_payment_keyboard(payment_url, payment_id),
+            parse_mode='Markdown'
+        )
     else:
         await query.answer("❌ Ошибка создания платежа", show_alert=True)
 
 async def create_paypal_payment(query, context: ContextTypes.DEFAULT_TYPE):
-    """Создает платеж в PayPal"""
+    """Создает платеж PayPal и показывает ссылку"""
     user_id = query.from_user.id
+    
+    # Создаем платеж
     payment_url, payment_id = payment_processor.create_paypal_payment(user_id)
     
     if payment_url:
+        # Сохраняем payment_id для проверки
         context.user_data['last_payment_id'] = payment_id
         
-        text = f"""
+        payment_text = f"""
+✅ *Платеж создан!*
+
 💳 *Оплата через PayPal*
 ✅ *Стоимость:* 30 шекелей (₪)
+
 Нажмите кнопку ниже для перехода к оплате.
-После успешной оплаты доступ откроется автоматически.
+
+После успешной оплаты доступ откроется автоматически в течение 1-2 минут.
+
 🆔 *ID платежа:* `{payment_id}`
-"""
+        """
         
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("💳 Оплатить 30₪", url=payment_url)],
-            [InlineKeyboardButton("🔄 Проверить оплату", callback_data=f"check_paypal_{payment_id}")],
-            [InlineKeyboardButton("◀️ Назад", callback_data="payment_paypal")]
-        ])
-        
-        await query.edit_message_text(text=text, reply_markup=keyboard, parse_mode='Markdown')
+        # Отправляем НОВОЕ сообщение с ссылкой
+        await query.message.reply_text(
+            payment_text,
+            reply_markup=keyboard.get_paypal_payment_keyboard(payment_url, payment_id),
+            parse_mode='Markdown'
+        )
     else:
         await query.answer("❌ Ошибка создания платежа", show_alert=True)
 
@@ -235,28 +288,82 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
     # Извлекаем payment_id из callback_data
     payment_id = query.data.replace(f"check_{method}_", "")
     
-    # Проверяем статус через БД
-    conn = db.get_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT status FROM payments WHERE payment_id = %s",
-            (payment_id,)
+    # Проверяем статус платежа
+    status = payment_processor.check_payment_status(payment_id)
+    
+    if status == "success":
+        # Активируем курс
+        await activate_course_after_payment(
+            query.from_user.id,
+            payment_id,
+            method,
+            context.application
         )
-        result = cursor.fetchone()
         
-        if result and result[0] == 'success':
-            await activate_course(query, context, payment_id, method)
-        else:
-            await query.answer(
-                "⏳ Платеж еще обрабатывается. Попробуйте через минуту.",
-                show_alert=True
-            )
+        # Удаляем сообщение с кнопкой проверки
+        try:
+            await query.delete_message()
+        except:
+            pass
+            
+    elif status == "pending":
+        await query.answer(
+            "⏳ Платеж еще обрабатывается. Попробуйте через 2 минуты.",
+            show_alert=True
+        )
+    else:
+        await query.answer(
+            "❌ Платеж не найден или отменен",
+            show_alert=True
+        )
+
+async def activate_course_after_payment(user_id: int, payment_id: str, method: str, application):
+    """Активирует курс после успешной оплаты"""
+    try:
+        # Отправляем сообщение об успешной оплате
+        await application.bot.send_message(
+            chat_id=user_id,
+            text="""✅ *Оплата прошла успешно!*
+
+🎉 Доступ к курсу «Путь к мечте» активирован!
+
+Первое задание уже ждет вас ниже ⬇️""",
+            parse_mode='Markdown'
+        )
+        
+        # Отправляем День 1
+        await send_course_day1(user_id, application)
+        
+        # Уведомляем администратора
+        payment_processor.notify_admin({
+            'user_id': user_id,
+            'payment_id': payment_id,
+            'amount': 599.00 if method == "yookassa" else 30.00,
+            'currency': "RUB" if method == "yookassa" else "ILS",
+            'payment_method': method
+        })
+        
+        # Запускаем отправку остальных дней
+        from bot import schedule_course_messages
+        await schedule_course_messages(user_id, application)
+        
     except Exception as e:
-        logging.error(f"Error checking payment: {e}")
-        await query.answer("❌ Ошибка проверки платежа", show_alert=True)
-    finally:
-        conn.close()
+        logging.error(f"❌ Error activating course: {e}")
+
+async def back_to_payment_methods(query, context: ContextTypes.DEFAULT_TYPE):
+    """Возврат к выбору метода оплаты"""
+    back_text = """
+🚀 Выберите способ оплаты:
+
+🇷🇺 *Оплата из России* (рубли)
+🌍 *Оплата из любой точки мира* (шекели)
+"""
+    
+    await query.message.reply_text(
+        back_text,
+        reply_markup=keyboard.get_payment_method_keyboard(),
+        parse_mode='Markdown'
+    )
 
 async def send_course_day1(query, context, payment_id, payment_method):
     """Отправляет первый день курса"""
@@ -331,9 +438,6 @@ async def send_course_day1(query, context, payment_id, payment_method):
             show_alert=True
         )
 
-import asyncio
-from datetime import datetime, timedelta
-import logging
 
 # Глобальный словарь для хранения задач отправки
 user_tasks = {}
@@ -545,44 +649,3 @@ def get_user_current_day(user_id: int) -> int:
         return 1
     finally:
         conn.close()
-
-async def activate_course_after_payment(user_id: int, payment_id: str, application):
-    """Активирует курс после успешной оплаты"""
-    try:
-        # Проверяем, был ли уже активирован курс
-        if db.is_course_active(user_id):
-            logging.info(f"⚠️ Course already active for user {user_id}")
-            return
-        
-        # Создаем запись о покупке
-        db.create_course_purchase(user_id, "yookassa")  # или paypal
-        
-        # Отправляем подтверждение оплаты
-        await application.bot.send_message(
-            chat_id=user_id,
-            text="""✅ *Оплата прошла успешно!*
-
-Доступ к курсу «Путь к мечте» активирован.
-
-Первое задание уже ниже! Вы будете получать по одному сообщению в день в течение 7 дней автоматически.
-
-Если сообщения не приходят, напишите /help""",
-            parse_mode='Markdown'
-        )
-        
-        # Запускаем отправку курса
-        await schedule_course_messages(user_id, application)
-        
-        # Уведомляем администратора
-        payment_processor.notify_admin({
-            'user_id': user_id,
-            'payment_id': payment_id,
-            'amount': 599.00,  # или 30.00
-            'currency': "RUB",  # или "ILS"
-            'payment_method': "yookassa"  # или "paypal"
-        })
-        
-        logging.info(f"✅ Course activated for user {user_id}")
-        
-    except Exception as e:
-        logging.error(f"❌ Error activating course: {e}")

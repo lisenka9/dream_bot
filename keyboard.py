@@ -23,3 +23,19 @@ def get_paypal_payment_keyboard():
         [InlineKeyboardButton("🔄 Проверить оплату", callback_data="check_paypal_payment")]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+def get_yookassa_initial_keyboard():
+    """Первая клавиатура для ЮKassa - сразу оплата"""
+    keyboard = [
+        [InlineKeyboardButton("💳 Оплатить 599₽", callback_data="process_yookassa_payment")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_payment_method")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_paypal_initial_keyboard():
+    """Первая клавиатура для PayPal - сразу оплата"""
+    keyboard = [
+        [InlineKeyboardButton("💳 Оплатить 30₪", callback_data="process_paypal_payment")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="back_to_payment_method")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
