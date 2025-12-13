@@ -50,6 +50,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "back_to_payment_method":
         await back_to_payment_methods(query, context)
 
+    elif query.data == "payment_yookassa_retry":
+        await query.message.reply_text("🔄 Создаю новый платеж...")
+        await create_yookassa_payment(query, context)
+    
+    elif query.data == "payment_paypal_retry":
+        await query.message.reply_text("🔄 Создаю новый платеж...")
+        await create_paypal_payment(query, context)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
     user = update.effective_user
@@ -243,6 +251,9 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
     logging.info(f"🔍 Payment ID to check: {payment_id}")
     
     try:
+        # Сначала отвечаем на callback
+        await query.answer()
+        
         # Проверяем статус платежа
         logging.info(f"🔍 Calling check_payment_status for {payment_id}")
         status = payment_processor.check_payment_status(payment_id)
@@ -268,29 +279,102 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
                 
         elif status == "pending":
             logging.info(f"⏳ Payment still pending for {payment_id}")
-            # ОБНОВЛЕНО: Добавляем show_alert=True
-            await query.answer(
-                "⏳ Платеж еще обрабатывается. Попробуйте через 2 минуты.",
-                show_alert=True
+            
+            # Отправляем сообщение пользователю
+            pending_text = f"""
+⏳ *Платеж обрабатывается*
+
+Платеж `{payment_id}` еще обрабатывается платежной системой.
+
+💡 Обычно платежи обрабатываются в течение 1-5 минут.
+            """
+            
+            await query.message.reply_text(
+                pending_text,
+                parse_mode='Markdown'
             )
+            
         elif status == "not_found":
             logging.warning(f"❌ Payment not found: {payment_id}")
-            await query.answer(
-                "❌ Платеж не найден. Возможно, он еще не создан.",
-                show_alert=True
+            
+            not_found_text = f"""
+❌ *Платеж не найден*
+
+Платеж `{payment_id}` не найден в системе.
+
+⚠️ *Возможные причины:*
+• Платеж еще не создан
+• Произошла ошибка при создании
+• ID платежа изменился
+            """
+            
+            await query.message.reply_text(
+                not_found_text,
+                parse_mode='Markdown'
             )
-        else:
-            logging.warning(f"❌ Payment canceled or failed: {payment_id}")
-            await query.answer(
-                "❌ Платеж отменен или не прошел",
-                show_alert=True
+            
+        elif status == "failed" or status == "canceled":
+            logging.warning(f"❌ Payment failed/canceled: {payment_id}")
+            
+            failed_text = f"""
+❌ *Платеж не прошел*
+
+Платеж `{payment_id}` был отменен или не прошел.
+
+⚠️ *Возможные причины:*
+• Недостаточно средств на карте
+• Карта отклонена банком
+• Вы отменили платеж
+• Истекло время оплаты
+            """
+            
+            await query.message.reply_text(
+                failed_text,
+                parse_mode='Markdown'
+            )
+            
+            # Предлагаем создать новый платеж
+            retry_text = "🔄 Хотите создать новый платеж?"
+            retry_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("💳 Создать новый платеж", callback_data=f"payment_{method}")],
+                [InlineKeyboardButton("◀️ Выбрать другой способ", callback_data="back_to_payment_method")]
+            ])
+            
+            await query.message.reply_text(
+                retry_text,
+                reply_markup=retry_keyboard
+            )
+            
+        else:  # error или другой статус
+            logging.error(f"❌ Unknown payment status: {status} for {payment_id}")
+            
+            error_text = f"""
+⚠️ *Ошибка проверки платежа*
+
+Не удалось проверить статус платежа `{payment_id}`.
+
+⏰ *Статус:* `{status}`
+            """
+            
+            await query.message.reply_text(
+                error_text,
+                parse_mode='Markdown'
             )
             
     except Exception as e:
         logging.error(f"❌ Error in check_specific_payment: {e}", exc_info=True)
-        await query.answer(
-            "❌ Ошибка проверки платежа. Попробуйте позже.",
-            show_alert=True
+        
+        error_text = f"""
+🚨 *Произошла ошибка*
+
+При проверке платежа произошла ошибка.
+
+📋 *Ошибка:* `{str(e)[:100]}...`
+        """
+        
+        await query.message.reply_text(
+            error_text,
+            parse_mode='Markdown'
         )
 
 async def activate_course_after_payment(user_id: int, payment_id: str, method: str, application):
@@ -329,10 +413,17 @@ async def activate_course_after_payment(user_id: int, payment_id: str, method: s
 async def back_to_payment_methods(query, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к выбору метода оплаты"""
     back_text = """
-🚀 Выберите способ оплаты:
+🔄 *Возвращаемся к выбору оплаты*
 
-🇷🇺 *Оплата из России* (рубли)
-🌍 *Оплата из любой точки мира* (шекели)
+Выберите способ оплаты:
+
+🇷🇺 *Оплата из России* (599 рублей)
+• ЮKassa
+• Банковские карты РФ
+
+🌍 *Оплата из любой точки мира* (30 шекелей)
+• PayPal
+• Международные карты
 """
     
     await query.message.reply_text(

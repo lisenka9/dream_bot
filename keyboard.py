@@ -23,3 +23,17 @@ def get_paypal_payment_keyboard(payment_url, payment_id):
         [InlineKeyboardButton("🔄 Проверить оплату", callback_data=f"check_paypal_{payment_id}")]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+def get_payment_retry_keyboard(method: str):
+    """Клавиатура для повторной оплаты"""
+    if method == "yookassa":
+        keyboard = [
+            [InlineKeyboardButton("🔄 Попробовать снова", callback_data="payment_yookassa_retry")],
+            [InlineKeyboardButton("◀️ Назад к выбору", callback_data="back_to_payment_method")]
+        ]
+    else: 
+        keyboard = [
+            [InlineKeyboardButton("🔄 Попробовать снова", callback_data="payment_paypal_retry")],
+            [InlineKeyboardButton("◀️ Назад к выбору", callback_data="back_to_payment_method")]
+        ]
+    return InlineKeyboardMarkup(keyboard)
