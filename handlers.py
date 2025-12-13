@@ -225,7 +225,7 @@ async def create_paypal_payment(query, context: ContextTypes.DEFAULT_TYPE):
         
         payment_text = f"""
 💳 *Оплата через PayPal*
-✅ *Стоимость:* 30 шекелей (₪)
+✅ *Стоимость:* 30 шекелей 
 
 Нажмите кнопку ниже для перехода к оплате.
 
@@ -293,7 +293,6 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
 2. Нажмите кнопку «Проверить снова» ниже
             """
             
-            # Клавиатура с кнопкой проверки
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_{method}_{payment_id}")],
                 [InlineKeyboardButton("💳 Создать новый платеж", callback_data=f"payment_{method}")],
@@ -322,7 +321,6 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
 🔄 *Создайте новый платеж:*
             """
             
-            # Клавиатура для создания нового платежа
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("💳 Создать новый платеж", callback_data=f"payment_{method}")],
                 [InlineKeyboardButton("◀️ Вернуться к выбору", callback_data="back_to_payment_method")]
@@ -351,7 +349,6 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
 🔄 *Создайте новый платеж:*
             """
             
-            # Клавиатура для повторной оплаты
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("💳 Создать новый платеж", callback_data=f"payment_{method}")],
                 [InlineKeyboardButton("◀️ Вернуться к выбору", callback_data="back_to_payment_method")]
@@ -374,7 +371,6 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
 ⏰ *Статус:* `{status}`
             """
             
-            # Клавиатура с опциями
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_{method}_{payment_id}")],
                 [InlineKeyboardButton("💳 Создать новый платеж", callback_data=f"payment_{method}")]
@@ -396,7 +392,6 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
 
         """
         
-        # Клавиатура для восстановления
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("💳 Создать новый платеж", callback_data=f"payment_{method}")],
             [InlineKeyboardButton("◀️ Вернуться к выбору", callback_data="back_to_payment_method")]
@@ -449,12 +444,8 @@ async def back_to_payment_methods(query, context: ContextTypes.DEFAULT_TYPE):
 Выберите способ оплаты:
 
 🇷🇺 *Оплата из России* (599 рублей)
-• ЮKassa
-• Банковские карты РФ
-
 🌍 *Оплата из любой точки мира* (30 шекелей)
-• PayPal
-• Международные карты
+
 """
     
     await query.message.reply_text(
