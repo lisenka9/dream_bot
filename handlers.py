@@ -280,17 +280,29 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
         elif status == "pending":
             logging.info(f"⏳ Payment still pending for {payment_id}")
             
-            # Отправляем сообщение пользователю
+            # Отправляем сообщение пользователю с кнопкой проверки
             pending_text = f"""
 ⏳ *Платеж обрабатывается*
 
 Платеж `{payment_id}` еще обрабатывается платежной системой.
 
-💡 Обычно платежи обрабатываются в течение 1-5 минут.
+⏱️ *Обычное время обработки:* 1-5 минут
+
+💡 *Рекомендации:*
+1. Подождите 2-3 минуты
+2. Нажмите кнопку «Проверить снова» ниже
             """
+            
+            # Клавиатура с кнопкой проверки
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_{method}_{payment_id}")],
+                [InlineKeyboardButton("💳 Создать новый платеж", callback_data=f"payment_{method}")],
+                [InlineKeyboardButton("◀️ Выбрать другой способ", callback_data="back_to_payment_method")]
+            ])
             
             await query.message.reply_text(
                 pending_text,
+                reply_markup=keyboard,
                 parse_mode='Markdown'
             )
             
@@ -306,10 +318,19 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
 • Платеж еще не создан
 • Произошла ошибка при создании
 • ID платежа изменился
+
+🔄 *Создайте новый платеж:*
             """
+            
+            # Клавиатура для создания нового платежа
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("💳 Создать новый платеж", callback_data=f"payment_{method}")],
+                [InlineKeyboardButton("◀️ Вернуться к выбору", callback_data="back_to_payment_method")]
+            ])
             
             await query.message.reply_text(
                 not_found_text,
+                reply_markup=keyboard,
                 parse_mode='Markdown'
             )
             
@@ -326,23 +347,20 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
 • Карта отклонена банком
 • Вы отменили платеж
 • Истекло время оплаты
+
+🔄 *Создайте новый платеж:*
             """
             
-            await query.message.reply_text(
-                failed_text,
-                parse_mode='Markdown'
-            )
-            
-            # Предлагаем создать новый платеж
-            retry_text = "🔄 Хотите создать новый платеж?"
-            retry_keyboard = InlineKeyboardMarkup([
+            # Клавиатура для повторной оплаты
+            keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("💳 Создать новый платеж", callback_data=f"payment_{method}")],
-                [InlineKeyboardButton("◀️ Выбрать другой способ", callback_data="back_to_payment_method")]
+                [InlineKeyboardButton("◀️ Вернуться к выбору", callback_data="back_to_payment_method")]
             ])
             
             await query.message.reply_text(
-                retry_text,
-                reply_markup=retry_keyboard
+                failed_text,
+                reply_markup=keyboard,
+                parse_mode='Markdown'
             )
             
         else:  # error или другой статус
@@ -356,8 +374,15 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
 ⏰ *Статус:* `{status}`
             """
             
+            # Клавиатура с опциями
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Проверить снова", callback_data=f"check_{method}_{payment_id}")],
+                [InlineKeyboardButton("💳 Создать новый платеж", callback_data=f"payment_{method}")]
+            ])
+            
             await query.message.reply_text(
                 error_text,
+                reply_markup=keyboard,
                 parse_mode='Markdown'
             )
             
@@ -369,11 +394,17 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
 
 При проверке платежа произошла ошибка.
 
-📋 *Ошибка:* `{str(e)[:100]}...`
         """
+        
+        # Клавиатура для восстановления
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("💳 Создать новый платеж", callback_data=f"payment_{method}")],
+            [InlineKeyboardButton("◀️ Вернуться к выбору", callback_data="back_to_payment_method")]
+        ])
         
         await query.message.reply_text(
             error_text,
+            reply_markup=keyboard,
             parse_mode='Markdown'
         )
 
