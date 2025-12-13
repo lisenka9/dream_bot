@@ -93,6 +93,16 @@ def yookassa_webhook():
             if user_id:
                 logger.info(f"✅ Payment {payment_id} succeeded for user {user_id}")
                 
+                from payment_processor import PaymentProcessor
+                payment_processor = PaymentProcessor(db)
+                payment_processor.notify_admin({
+                    'user_id': user_id,
+                    'payment_id': payment_id,
+                    'amount': 599.00,
+                    'currency': "RUB",
+                    'payment_method': "yookassa"
+                })
+
                 # Немедленно активируем курс
                 from handlers import activate_course_after_payment
                 
@@ -149,7 +159,7 @@ def paypal_webhook():
         
         if event_type == 'PAYMENT.CAPTURE.COMPLETED':
             payment_id = resource.get('id')
-            custom_id = resource.get('custom_id')  # Это наш user_id
+            custom_id = resource.get('custom_id')  
             
             if payment_id and custom_id:
                 # Обновляем статус платежа
@@ -157,6 +167,17 @@ def paypal_webhook():
                 
                 try:
                     user_id = int(custom_id)
+
+                    from payment_processor import PaymentProcessor
+                    payment_processor = PaymentProcessor(db)
+                    payment_processor.notify_admin({
+                        'user_id': user_id,
+                        'payment_id': payment_id,
+                        'amount': 30.00,
+                        'currency': "ILS",
+                        'payment_method': "paypal"
+                    })
+
                     # Активируем курс
                     from handlers import activate_course_after_payment
                     
@@ -224,6 +245,9 @@ def setup_handlers(application):
     """Настройка всех обработчиков команд"""
     # Добавляем обработчики команд
     application.add_handler(CommandHandler("start", handlers.start))
+    application.add_handler(CommandHandler("activate_course", handlers.activate_course_command))
+    application.add_handler(CommandHandler("stats", handlers.stats_command))
+    application.add_handler(CommandHandler("check_user", handlers.check_user_command))
 
     application.add_handler(CallbackQueryHandler(handlers.button_handler))
 

@@ -573,3 +573,254 @@ def get_user_current_day(user_id: int) -> int:
         return 1
     finally:
         conn.close()
+
+async def activate_course_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для ручной активации курса администратором"""
+    user = update.effective_user
+    
+    # Проверяем права администратора
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+        return
+    
+    # Проверяем аргументы команды
+    if not context.args:
+        await update.message.reply_text(
+            "📋 Использование: `/activate_course <user_id>`\n\n"
+            "Пример: `/activate_course 123456789`",
+            parse_mode='Markdown'
+        )
+        return
+    
+    try:
+        target_user_id = int(context.args[0])
+        
+        # Проверяем, существует ли пользователь
+        conn = db.get_connection()
+        if not conn:
+            await update.message.reply_text("❌ Ошибка подключения к базе данных.")
+            return
+        
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (target_user_id,))
+        user_exists = cursor.fetchone()
+        conn.close()
+        
+        if not user_exists:
+            await update.message.reply_text(f"❌ Пользователь с ID {target_user_id} не найден.")
+            return
+        
+        # Создаем фиктивный платеж для отслеживания
+        payment_id = f"manual_{datetime.now().strftime('%Y%m%d%H%M%S')}_{target_user_id}"
+        
+        # Сохраняем в БД как успешный платеж
+        if db.create_payment(target_user_id, payment_id, 0.00, "MANUAL", "manual"):
+            db.update_payment_status(payment_id, "success")
+            
+            # Активируем курс
+            await activate_course_after_payment(
+                target_user_id,
+                payment_id,
+                "manual",
+                context.application
+            )
+            
+            # Отправляем уведомление администратору
+            payment_processor.notify_admin({
+                'user_id': target_user_id,
+                'payment_id': payment_id,
+                'amount': 0.00,
+                'currency': "MANUAL",
+                'payment_method': "manual_activation"
+            })
+            
+            await update.message.reply_text(
+                f"✅ Курс успешно активирован для пользователя {target_user_id}!\n"
+                f"🆔 ID активации: `{payment_id}`",
+                parse_mode='Markdown'
+            )
+            
+            # Отправляем сообщение пользователю
+            try:
+                await context.application.bot.send_message(
+                    chat_id=target_user_id,
+                    text="🎉 *Доступ к курсу «Путь к мечте» был активирован!*\n\n"
+                         "Первое задание уже ждет вас ниже ⬇️",
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                await update.message.reply_text(
+                    f"✅ Курс активирован, но не удалось отправить сообщение пользователю: {e}"
+                )
+        else:
+            await update.message.reply_text("❌ Ошибка при создании записи об активации.")
+            
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат ID пользователя. Используйте числа.")
+    except Exception as e:
+        logging.error(f"Error in activate_course_command: {e}")
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает статистику (только для администраторов)"""
+    user = update.effective_user
+    
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+        return
+    
+    try:
+        conn = db.get_connection()
+        if not conn:
+            await update.message.reply_text("❌ Ошибка подключения к базе данных.")
+            return
+        
+        cursor = conn.cursor()
+        
+        # Общая статистика
+        cursor.execute("SELECT COUNT(*) FROM users")
+        total_users = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM payments WHERE status = 'success'")
+        successful_payments = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM course_progress WHERE is_active = TRUE")
+        active_courses = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(DISTINCT user_id) FROM course_progress WHERE current_day >= 7")
+        completed_courses = cursor.fetchone()[0]
+        
+        # Последние 5 платежей
+        cursor.execute('''
+            SELECT p.user_id, u.first_name, u.username, p.amount, p.currency, 
+                   p.payment_method, p.created_at, p.status
+            FROM payments p
+            LEFT JOIN users u ON p.user_id = u.user_id
+            ORDER BY p.created_at DESC
+            LIMIT 5
+        ''')
+        recent_payments = cursor.fetchall()
+        
+        conn.close()
+        
+        # Формируем сообщение
+        stats_text = f"""
+📊 *СТАТИСТИКА БОТА*
+
+👥 Всего пользователей: *{total_users}*
+💰 Успешных оплат: *{successful_payments}*
+📚 Активных курсов: *{active_courses}*
+🎓 Завершенных курсов: *{completed_courses}*
+
+💸 *Последние платежи:*
+"""
+        
+        for payment in recent_payments:
+            user_id, first_name, username, amount, currency, method, created_at, status = payment
+            user_name = f"{first_name} (@{username})" if username else f"{first_name}"
+            time_str = created_at.strftime('%d.%m %H:%M') if created_at else "N/A"
+            
+            status_emoji = "✅" if status == "success" else "⏳" if status == "pending" else "❌"
+            
+            stats_text += f"\n{status_emoji} {user_name} - {amount} {currency} ({method}) - {time_str}"
+        
+        stats_text += f"\n\n🆔 Ваш ID: `{user.id}`"
+        
+        await update.message.reply_text(stats_text, parse_mode='Markdown')
+        
+    except Exception as e:
+        logging.error(f"Error in stats_command: {e}")
+        await update.message.reply_text(f"❌ Ошибка получения статистики: {e}")
+
+async def check_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверяет статус пользователя (для администраторов)"""
+    user = update.effective_user
+    
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+        return
+    
+    if not context.args:
+        target_user_id = update.effective_user.id
+    else:
+        try:
+            target_user_id = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("❌ Неверный формат ID пользователя.")
+            return
+    
+    try:
+        conn = db.get_connection()
+        if not conn:
+            await update.message.reply_text("❌ Ошибка подключения к базе данных.")
+            return
+        
+        cursor = conn.cursor()
+        
+        # Информация о пользователе
+        cursor.execute(
+            "SELECT username, first_name, last_name, registered_date FROM users WHERE user_id = %s",
+            (target_user_id,)
+        )
+        user_info = cursor.fetchone()
+        
+        # Платежи пользователя
+        cursor.execute(
+            "SELECT payment_id, amount, currency, payment_method, status, created_at FROM payments WHERE user_id = %s ORDER BY created_at DESC",
+            (target_user_id,)
+        )
+        payments = cursor.fetchall()
+        
+        # Прогресс курса
+        cursor.execute(
+            "SELECT current_day, last_message_date, is_active FROM course_progress WHERE user_id = %s",
+            (target_user_id,)
+        )
+        progress = cursor.fetchone()
+        
+        conn.close()
+        
+        # Формируем сообщение
+        if user_info:
+            username, first_name, last_name, registered_date = user_info
+            user_display = f"{first_name} {last_name}" if first_name or last_name else "Без имени"
+            if username:
+                user_display += f" (@{username})"
+            
+            info_text = f"""
+👤 *Информация о пользователе:*
+
+🆔 ID: `{target_user_id}`
+📛 Имя: {user_display}
+📅 Регистрация: {registered_date.strftime('%d.%m.%Y %H:%M') if registered_date else 'N/A'}
+"""
+        else:
+            info_text = f"👤 Пользователь с ID `{target_user_id}` не найден в базе данных.\n"
+        
+        # Информация о платежах
+        if payments:
+            info_text += f"\n💳 *Платежи ({len(payments)}):*\n"
+            for payment in payments:
+                payment_id, amount, currency, method, status, created_at = payment
+                status_emoji = "✅" if status == "success" else "⏳" if status == "pending" else "❌"
+                time_str = created_at.strftime('%d.%m %H:%M') if created_at else ""
+                info_text += f"{status_emoji} {amount} {currency} ({method}) - {time_str}\n"
+        else:
+            info_text += "\n💳 *Платежи:* Нет\n"
+        
+        # Информация о прогрессе
+        if progress:
+            current_day, last_message_date, is_active = progress
+            status = "🟢 Активен" if is_active else "🔴 Не активен"
+            last_msg = f" ({last_message_date.strftime('%d.%m %H:%M')})" if last_message_date else ""
+            info_text += f"\n📚 *Курс:* {status}\n"
+            info_text += f"📅 Текущий день: {current_day}/7{last_msg}\n"
+        else:
+            info_text += "\n📚 *Курс:* Не активирован\n"
+        
+        await update.message.reply_text(info_text, parse_mode='Markdown')
+        
+    except Exception as e:
+        logging.error(f"Error in check_user_command: {e}")
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+

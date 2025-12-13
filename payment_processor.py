@@ -232,22 +232,47 @@ class PaymentProcessor:
             return False
 
     def notify_admin(self, payment_data):
-        """Отправляет уведомление администратору"""
+        """Отправляет уведомление администратору о платеже"""
         try:
             from telegram import Bot
             from config import BOT_TOKEN, ADMIN_IDS
             
             bot = Bot(token=BOT_TOKEN)
-            message = f"""
-💰 *Новая оплата курса!*
             
-👤 Пользователь: {payment_data['user_id']}
-💳 Система: {payment_data['payment_method']}
-💎 Сумма: {payment_data['amount']} {payment_data['currency']}
-🆔 ID платежа: `{payment_data['payment_id']}`
-⏰ Время: {datetime.now().strftime('%d.%m.%Y %H:%M')}
+            # Получаем информацию о пользователе из БД
+            conn = self.db.get_connection()
+            user_info = None
+            if conn:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT username, first_name, last_name FROM users WHERE user_id = %s",
+                        (payment_data['user_id'],)
+                    )
+                    result = cursor.fetchone()
+                    if result:
+                        username, first_name, last_name = result
+                        user_info = f"👤 {first_name} {last_name} (@{username})" if username else f"👤 {first_name} {last_name}"
+                except Exception as e:
+                    logger.error(f"Error getting user info: {e}")
+                finally:
+                    conn.close()
+            
+            if not user_info:
+                user_info = f"👤 ID: {payment_data['user_id']}"
+            
+            message = f"""
+    💰 *НОВАЯ ОПЛАТА КУРСА!*
+
+    {user_info}
+    💳 *Система:* {payment_data['payment_method'].upper()}
+    💎 *Сумма:* {payment_data['amount']} {payment_data['currency']}
+    🆔 *ID платежа:* `{payment_data['payment_id']}`
+    ⏰ *Время:* {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
+    📊 *Статус:* ✅ Успешно
             """
             
+            # Отправляем всем администраторам
             for admin_id in ADMIN_IDS:
                 try:
                     bot.send_message(
@@ -255,8 +280,10 @@ class PaymentProcessor:
                         text=message,
                         parse_mode='Markdown'
                     )
+                    logger.info(f"✅ Admin notification sent to {admin_id}")
                 except Exception as e:
                     logger.error(f"Failed to notify admin {admin_id}: {e}")
                     
         except Exception as e:
             logger.error(f"Error in admin notification: {e}")
+
