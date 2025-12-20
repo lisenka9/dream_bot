@@ -85,7 +85,7 @@ class CourseScheduler:
             logger.error(f"❌ Error in check_and_send_messages: {e}")
     
     async def send_course_day(self, user_id: int, day_number: int):
-        """Отправляет сообщения конкретного дня"""
+        """Отправляет сообщения конкретного дня по правильной структуре"""
         try:
             # Получаем контент дня
             content = self.db.get_course_content(day_number)
@@ -97,42 +97,32 @@ class CourseScheduler:
             has_images = content['has_images']
             image_urls = content.get('image_urls', [])
             
-            # Отправляем первое сообщение с номером дня
-            first_message = f"📅 **День {day_number}/7**\n\n{messages[0]}"
-            try:
-                await self.application.bot.send_message(
-                    chat_id=user_id,
-                    text=first_message,
-                    parse_mode='Markdown'
-                )
-                await asyncio.sleep(0.5)
-            except Exception as e:
-                logger.error(f"Error sending first message to {user_id}: {e}")
+            image_index = 0  # Индекс для картинок
             
-            # Отправляем остальные сообщения
-            for i, message in enumerate(messages[1:], 1):
-                if message.strip():  # Пропускаем пустые строки
+            # Отправляем каждое сообщение по порядку
+            for i, message in enumerate(messages):
+                if message.strip():  # Если сообщение не пустое
                     try:
                         await self.application.bot.send_message(
                             chat_id=user_id,
                             text=message,
-                            parse_mode='Markdown' if "**" in message or "•" in message else None
+                            parse_mode='Markdown'
                         )
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(1)  # Задержка 1 секунда между сообщениями
                     except Exception as e:
-                        logger.error(f"Error sending message {i} to {user_id}: {e}")
-            
-            # Отправляем картинки если есть
-            if has_images and image_urls:
-                for image_url in image_urls:
+                        logger.error(f"Error sending message {i+1} to {user_id}: {e}")
+                
+                # Если это пустое сообщение и есть картинки, отправляем картинку
+                elif has_images and image_index < len(image_urls):
                     try:
                         await self.application.bot.send_photo(
                             chat_id=user_id,
-                            photo=image_url
+                            photo=image_urls[image_index]
                         )
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(1)
+                        image_index += 1
                     except Exception as e:
-                        logger.error(f"Error sending photo to {user_id}: {e}")
+                        logger.error(f"Error sending image {image_index} to {user_id}: {e}")
             
             # Обновляем прогресс пользователя
             self.update_user_progress(user_id, day_number)
@@ -471,6 +461,7 @@ def setup_handlers(application):
     application.add_handler(CommandHandler("activate_course", handlers.activate_course_command))
     application.add_handler(CommandHandler("stats", handlers.stats_command))
     application.add_handler(CommandHandler("check_user", handlers.check_user_command))
+    application.add_handler(CommandHandler("reset_course", handlers.reset_course_command))
 
     application.add_handler(CallbackQueryHandler(handlers.button_handler))
 

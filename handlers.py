@@ -492,41 +492,6 @@ async def activate_course_after_payment(user_id: int, payment_id: str, method: s
         except:
             pass
 
-async def send_course_day1(user_id: int, application):
-    """Отправляет первый день курса немедленно"""
-    try:
-        # Получаем контент дня 1 из БД
-        content = db.get_course_content(1)
-        if not content:
-            # Если БД не работает, используем запасной вариант
-            await send_fallback_day1(user_id, application)
-            return
-        
-        messages = content['messages']
-        
-        # Отправляем первое сообщение с приветствием
-        await application.bot.send_message(
-            chat_id=user_id,
-            text="📅 **День 1/7**\n\n" + messages[0],
-            parse_mode='Markdown'
-        )
-        
-        # Отправляем остальные сообщения с задержкой
-        for i, message in enumerate(messages[1:], 1):
-            if message.strip():  # Пропускаем пустые строки
-                await asyncio.sleep(0.5)  # Небольшая задержка
-                await application.bot.send_message(
-                    chat_id=user_id,
-                    text=message,
-                    parse_mode='Markdown' if "**" in message or "•" in message else None
-                )
-        
-        logging.info(f"✅ Sent Day 1 to user {user_id}")
-        
-    except Exception as e:
-        logging.error(f"❌ Error sending Day 1: {e}")
-        # Запасной вариант
-        await send_fallback_day1(user_id, application)
 
 async def send_fallback_day1(user_id: int, application):
     """Запасной вариант отправки дня 1 если БД не работает"""
@@ -1269,4 +1234,34 @@ async def activate_marathon(user_id: int, payment_id: str, method: str, applicat
         
     except Exception as e:
         logging.error(f"❌ Error activating marathon: {e}")
+
+async def reset_course_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для сброса и пересоздания контента курса (только для админов)"""
+    user = update.effective_user
+    
+    from config import ADMIN_IDS
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ У вас нет прав для этой команды")
+        return
+    
+    try:
+        # Пересоздаем контент
+        db.initialize_course_content()
+        
+        await update.message.reply_text(
+            "✅ Контент курса успешно пересоздан!\n\n"
+            "Структура:\n"
+            "• День 1: 3 сообщения\n"
+            "• День 2: 4 сообщения + 2 картинки\n"
+            "• День 3: 3 сообщения\n"
+            "• День 4: 3 сообщения\n"
+            "• День 5: 3 сообщения\n"
+            "• День 6: 3 сообщения\n"
+            "• День 7: 3 сообщения",
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error resetting course: {e}")
+        await update.message.reply_text(f"❌ Ошибка: {e}")
 
