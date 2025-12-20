@@ -282,7 +282,7 @@ class DatabaseManager:
                     (4, json.dumps(day4_messages, ensure_ascii=False))
                 )
                 
-                # День 5
+                # День 5 
                 day5_messages = [
                     "👋 Здравствуйте! Сегодня — **День 5: От Мечты к Цели!**",
                     "",
