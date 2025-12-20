@@ -103,10 +103,14 @@ class CourseScheduler:
             for i, message in enumerate(messages):
                 if message.strip():  # Если сообщение не пустое
                     try:
+                        # ИСПРАВЬТЕ ЭТУ ЧАСТЬ: добавьте конвертацию в HTML
+                        from database import DatabaseManager
+                        html_message = DatabaseManager.markdown_to_html(message)
+                        
                         await self.application.bot.send_message(
                             chat_id=user_id,
-                            text=message,
-                            parse_mode='Markdown'  # ВАЖНО: включаем Markdown
+                            text=html_message,
+                            parse_mode='HTML'  # Используем HTML вместо Markdown
                         )
                         await asyncio.sleep(1)  # Задержка 1 секунда между сообщениями
                     except Exception as e:
