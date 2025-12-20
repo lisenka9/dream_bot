@@ -1469,3 +1469,35 @@ async def debug_content_command(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception as e:
         print(f"Debug error: {e}")
         await update.message.reply_text(f"Ошибка: {str(e)[:200]}")
+
+async def test_markdown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Тестирует Markdown разметку"""
+    user = update.effective_user
+    
+    test_messages = [
+        "Тест **жирного** текста",
+        "Тест *курсива*",
+        "Тест `моноширинного` текста",
+        "Тест [ссылки](https://example.com)",
+        "Тест **жирного с *курсивом***",
+    ]
+    
+    for i, test_msg in enumerate(test_messages):
+        try:
+            # С Markdown
+            await update.message.reply_text(
+                f"Тест {i+1} (Markdown): {test_msg}",
+                parse_mode='Markdown'
+            )
+            await asyncio.sleep(0.5)
+            
+            # Без Markdown
+            await update.message.reply_text(
+                f"Тест {i+1} (без разметки): {test_msg}",
+                parse_mode=None
+            )
+            await asyncio.sleep(0.5)
+            
+        except Exception as e:
+            await update.message.reply_text(f"Ошибка теста {i+1}: {e}")
+
