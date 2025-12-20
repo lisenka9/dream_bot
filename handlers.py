@@ -440,7 +440,7 @@ async def activate_course_after_payment(user_id: int, payment_id: str, method: s
                 cursor.execute('''
                     UPDATE course_progress 
                     SET current_day = 1,
-                        last_message_time = NOW(),
+                        last_message_date = NOW(),  # Используем last_message_date
                         is_active = TRUE,
                         completed_at = NULL
                     WHERE user_id = %s
@@ -449,7 +449,7 @@ async def activate_course_after_payment(user_id: int, payment_id: str, method: s
                 # Создаем новую запись
                 cursor.execute('''
                     INSERT INTO course_progress 
-                    (user_id, current_day, last_message_time, is_active)
+                    (user_id, current_day, last_message_date, is_active)
                     VALUES (%s, 1, NOW(), TRUE)
                 ''', (user_id,))
             
@@ -484,7 +484,6 @@ async def activate_course_after_payment(user_id: int, payment_id: str, method: s
         
     except Exception as e:
         logging.error(f"❌ Error activating course: {e}")
-        # Пытаемся отправить пользователю сообщение об ошибке
         try:
             await application.bot.send_message(
                 chat_id=user_id,

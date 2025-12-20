@@ -90,6 +90,18 @@ class DatabaseManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS course_progress (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT UNIQUE REFERENCES users(user_id),
+                    current_day INTEGER DEFAULT 1,
+                    last_message_date TIMESTAMP,  -- Изменили last_message_time на last_message_date
+                    is_active BOOLEAN DEFAULT TRUE,
+                    completed_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
             conn.commit()
             
             # Заполняем контент курса если пусто

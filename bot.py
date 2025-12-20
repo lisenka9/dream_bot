@@ -50,37 +50,36 @@ class CourseScheduler:
             
             cursor = conn.cursor()
             
-            # Находим пользователей, которым нужно отправить сообщения
-            # У которых active_course = TRUE и next_message_time <= NOW()
+            # ИСПРАВЛЕННЫЙ ЗАПРОС: используем last_message_date вместо last_message_time
             cursor.execute('''
-                SELECT user_id, current_day, last_message_time 
+                SELECT user_id, current_day 
                 FROM course_progress 
                 WHERE is_active = TRUE 
                 AND current_day <= 7
                 AND (
-                    last_message_time IS NULL 
-                    OR last_message_time <= NOW() - INTERVAL '23 hours 55 minutes'
+                    last_message_date IS NULL 
+                    OR last_message_date <= NOW() - INTERVAL '23 hours 55 minutes'
                 )
             ''')
             
             users = cursor.fetchall()
             conn.close()
             
-            for user_id, current_day, last_message_time in users:
+            for user_id, current_day in users:
                 try:
                     logger.info(f"📨 Sending day {current_day} to user {user_id}")
                     
                     # Отправляем сообщения дня
-                    asyncio.run_coroutine_threadsafe(
-                        self.send_course_day(user_id, current_day),
-                        self.application.bot._loop
-                    )
+                    if self.application.bot:
+                        asyncio.run_coroutine_threadsafe(
+                            self.send_course_day(user_id, current_day),
+                            self.application.bot._loop
+                        )
                     
-                    # Ждем между отправками
-                    time.sleep(0.5)
+                    time.sleep(0.1)
                     
                 except Exception as e:
-                    logger.error(f"❌ Error sending to user {user_id}: {e}")
+                    logger.error(f"❌ Error scheduling for user {user_id}: {e}")
                     
         except Exception as e:
             logger.error(f"❌ Error in check_and_send_messages: {e}")
@@ -98,18 +97,30 @@ class CourseScheduler:
             has_images = content['has_images']
             image_urls = content.get('image_urls', [])
             
-            # Отправляем текстовые сообщения
-            for message in messages:
+            # Отправляем первое сообщение с номером дня
+            first_message = f"📅 **День {day_number}/7**\n\n{messages[0]}"
+            try:
+                await self.application.bot.send_message(
+                    chat_id=user_id,
+                    text=first_message,
+                    parse_mode='Markdown'
+                )
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                logger.error(f"Error sending first message to {user_id}: {e}")
+            
+            # Отправляем остальные сообщения
+            for i, message in enumerate(messages[1:], 1):
                 if message.strip():  # Пропускаем пустые строки
                     try:
                         await self.application.bot.send_message(
                             chat_id=user_id,
                             text=message,
-                            parse_mode='Markdown'
+                            parse_mode='Markdown' if "**" in message or "•" in message else None
                         )
-                        await asyncio.sleep(0.5)  # Задержка между сообщениями
+                        await asyncio.sleep(0.5)
                     except Exception as e:
-                        logger.error(f"Error sending message to {user_id}: {e}")
+                        logger.error(f"Error sending message {i} to {user_id}: {e}")
             
             # Отправляем картинки если есть
             if has_images and image_urls:
@@ -135,9 +146,49 @@ class CourseScheduler:
         except Exception as e:
             logger.error(f"❌ Error in send_course_day: {e}")
     
+    def update_user_progress(self, user_id: int, current_day: int):
+        """Обновляет прогресс пользователя - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+        conn = self.db.get_connection()
+        if not conn:
+            return
+        
+        try:
+            cursor = conn.cursor()
+            
+            if current_day < 7:
+                # Переходим к следующему дню
+                next_day = current_day + 1
+                cursor.execute('''
+                    UPDATE course_progress 
+                    SET current_day = %s, 
+                        last_message_date = NOW(),  -- Используем last_message_date
+                        is_active = TRUE
+                    WHERE user_id = %s
+                ''', (next_day, user_id))
+            else:
+                # Завершаем курс
+                cursor.execute('''
+                    UPDATE course_progress 
+                    SET is_active = FALSE,
+                        completed_at = NOW(),
+                        last_message_date = NOW()  -- Используем last_message_date
+                    WHERE user_id = %s
+                ''', (user_id,))
+            
+            conn.commit()
+            logger.info(f"✅ Progress updated for user {user_id}: day {current_day}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error updating progress: {e}")
+            conn.rollback()
+        finally:
+            conn.close()
+    
     async def send_marathon_offer(self, user_id: int):
         """Отправляет предложение марафона после завершения курса"""
         try:
+            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+            
             marathon_text = """
 🔥 **Поздравляю с завершением 7-дневного пути!**
 
@@ -173,44 +224,7 @@ class CourseScheduler:
             
         except Exception as e:
             logger.error(f"❌ Error sending marathon offer: {e}")
-    
-    def update_user_progress(self, user_id: int, current_day: int):
-        """Обновляет прогресс пользователя"""
-        conn = self.db.get_connection()
-        if not conn:
-            return
-        
-        try:
-            cursor = conn.cursor()
-            
-            if current_day < 7:
-                # Переходим к следующему дню
-                next_day = current_day + 1
-                cursor.execute('''
-                    UPDATE course_progress 
-                    SET current_day = %s, 
-                        last_message_time = NOW(),
-                        is_active = TRUE
-                    WHERE user_id = %s
-                ''', (next_day, user_id))
-            else:
-                # Завершаем курс
-                cursor.execute('''
-                    UPDATE course_progress 
-                    SET is_active = FALSE,
-                        completed_at = NOW(),
-                        last_message_time = NOW()
-                    WHERE user_id = %s
-                ''', (user_id,))
-            
-            conn.commit()
-            logger.info(f"✅ Progress updated for user {user_id}: day {current_day}")
-            
-        except Exception as e:
-            logger.error(f"❌ Error updating progress: {e}")
-            conn.rollback()
-        finally:
-            conn.close()
+
 
 class GracefulShutdown:
     def __init__(self):
