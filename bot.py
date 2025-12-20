@@ -12,9 +12,206 @@ from datetime import datetime, timedelta
 from telegram import Update
 import asyncio
 import signal
+import schedule
 import handlers
 from config import BOT_TOKEN, PAYPAL_WEBHOOK_ID
 from database import db
+
+class CourseScheduler:
+    """Планировщик для отправки ежедневных сообщений курса"""
+    
+    def __init__(self, application):
+        self.application = application
+        self.db = db
+        self.running = False
+        
+    def start(self):
+        """Запускает планировщик"""
+        self.running = True
+        thread = threading.Thread(target=self._run_scheduler, daemon=True)
+        thread.start()
+        logger.info("✅ Course scheduler started")
+    
+    def _run_scheduler(self):
+        """Запускает цикл планировщика"""
+        while self.running:
+            try:
+                self.check_and_send_messages()
+                time.sleep(60)  # Проверяем каждую минуту
+            except Exception as e:
+                logger.error(f"❌ Scheduler error: {e}")
+                time.sleep(300)  # При ошибке ждем 5 минут
+    
+    def check_and_send_messages(self):
+        """Проверяет и отправляет сообщения пользователям"""
+        try:
+            conn = self.db.get_connection()
+            if not conn:
+                return
+            
+            cursor = conn.cursor()
+            
+            # Находим пользователей, которым нужно отправить сообщения
+            # У которых active_course = TRUE и next_message_time <= NOW()
+            cursor.execute('''
+                SELECT user_id, current_day, last_message_time 
+                FROM course_progress 
+                WHERE is_active = TRUE 
+                AND current_day <= 7
+                AND (
+                    last_message_time IS NULL 
+                    OR last_message_time <= NOW() - INTERVAL '23 hours 55 minutes'
+                )
+            ''')
+            
+            users = cursor.fetchall()
+            conn.close()
+            
+            for user_id, current_day, last_message_time in users:
+                try:
+                    logger.info(f"📨 Sending day {current_day} to user {user_id}")
+                    
+                    # Отправляем сообщения дня
+                    asyncio.run_coroutine_threadsafe(
+                        self.send_course_day(user_id, current_day),
+                        self.application.bot._loop
+                    )
+                    
+                    # Ждем между отправками
+                    time.sleep(0.5)
+                    
+                except Exception as e:
+                    logger.error(f"❌ Error sending to user {user_id}: {e}")
+                    
+        except Exception as e:
+            logger.error(f"❌ Error in check_and_send_messages: {e}")
+    
+    async def send_course_day(self, user_id: int, day_number: int):
+        """Отправляет сообщения конкретного дня"""
+        try:
+            # Получаем контент дня
+            content = self.db.get_course_content(day_number)
+            if not content:
+                logger.error(f"❌ No content for day {day_number}")
+                return
+            
+            messages = content['messages']
+            has_images = content['has_images']
+            image_urls = content.get('image_urls', [])
+            
+            # Отправляем текстовые сообщения
+            for message in messages:
+                if message.strip():  # Пропускаем пустые строки
+                    try:
+                        await self.application.bot.send_message(
+                            chat_id=user_id,
+                            text=message,
+                            parse_mode='Markdown'
+                        )
+                        await asyncio.sleep(0.5)  # Задержка между сообщениями
+                    except Exception as e:
+                        logger.error(f"Error sending message to {user_id}: {e}")
+            
+            # Отправляем картинки если есть
+            if has_images and image_urls:
+                for image_url in image_urls:
+                    try:
+                        await self.application.bot.send_photo(
+                            chat_id=user_id,
+                            photo=image_url
+                        )
+                        await asyncio.sleep(0.5)
+                    except Exception as e:
+                        logger.error(f"Error sending photo to {user_id}: {e}")
+            
+            # Обновляем прогресс пользователя
+            self.update_user_progress(user_id, day_number)
+            
+            logger.info(f"✅ Day {day_number} sent to user {user_id}")
+            
+            # Если это день 7, отправляем предложение марафона
+            if day_number == 7:
+                await self.send_marathon_offer(user_id)
+                
+        except Exception as e:
+            logger.error(f"❌ Error in send_course_day: {e}")
+    
+    async def send_marathon_offer(self, user_id: int):
+        """Отправляет предложение марафона после завершения курса"""
+        try:
+            marathon_text = """
+🔥 **Поздравляю с завершением 7-дневного пути!**
+
+Вы прошли весь цикл: от мечты до плана. Вы уже знаете, как ставить цели и создавать **движение.** Готовы ли вы закрепить этот навык и **реализовать цели под руководством психотерапевта?**
+
+Приглашаю вас на большой **Марафон «От мечты к цели»,** где мы проведем 21 день в глубокой работе над вашими планами, устраняя блоки и страхи.
+
+✨ **Что вас ждет:**
+✔️**3 недели** структурированной работы в **групповом чате Telegram.**
+✔️**Взаимообмен и переопыление** с другими участниками для мощной поддержки.
+✔️Моя персональная поддержка.
+✔️Глубокая проработка **блоков и страхов.**
+✔️Закрепление навыка достижения цели до результата.
+
+🎁🎁 **Специальный Бонус для вас!**
+Вместо 7000₽, вы получаете Марафон всего за **4900₽!**
+
+🗓️ **Старт Марафона: 4 января 2026 года.**
+Узнать подробности и оплатить со скидкой👇
+"""
+            
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("📖 Узнать подробности марафона", callback_data="marathon_info")],
+                [InlineKeyboardButton("💳 Оплатить марафон", callback_data="marathon_payment")]
+            ])
+            
+            await self.application.bot.send_message(
+                chat_id=user_id,
+                text=marathon_text,
+                reply_markup=keyboard,
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ Error sending marathon offer: {e}")
+    
+    def update_user_progress(self, user_id: int, current_day: int):
+        """Обновляет прогресс пользователя"""
+        conn = self.db.get_connection()
+        if not conn:
+            return
+        
+        try:
+            cursor = conn.cursor()
+            
+            if current_day < 7:
+                # Переходим к следующему дню
+                next_day = current_day + 1
+                cursor.execute('''
+                    UPDATE course_progress 
+                    SET current_day = %s, 
+                        last_message_time = NOW(),
+                        is_active = TRUE
+                    WHERE user_id = %s
+                ''', (next_day, user_id))
+            else:
+                # Завершаем курс
+                cursor.execute('''
+                    UPDATE course_progress 
+                    SET is_active = FALSE,
+                        completed_at = NOW(),
+                        last_message_time = NOW()
+                    WHERE user_id = %s
+                ''', (user_id,))
+            
+            conn.commit()
+            logger.info(f"✅ Progress updated for user {user_id}: day {current_day}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error updating progress: {e}")
+            conn.rollback()
+        finally:
+            conn.close()
 
 class GracefulShutdown:
     def __init__(self):
@@ -358,7 +555,6 @@ def main():
     logger.info("🚀 Starting Metaphor Bot (SINGLE INSTANCE)...")
     
     try:
-        # Запускаем Flask в отдельном потоке
         flask_thread = threading.Thread(target=run_flask_server, daemon=True)
         flask_thread.start()
         logger.info("✅ Flask server started in thread")
@@ -366,14 +562,36 @@ def main():
         # Даем Flask время на запуск
         time.sleep(3)
         
-        # Запускаем самопинг в отдельном потоке
+        # Запускаем самопинг
         ping_thread = threading.Thread(target=ping_self, daemon=True)
         ping_thread.start()
         logger.info("✅ Self-ping started")
 
-        # Запускаем бота в ОСНОВНОМ потоке
-        logger.info("✅ Starting bot in main thread...")
-        run_bot()
+        # Создаем приложение бота
+        application = Application.builder().token(BOT_TOKEN).build()
+        
+        # Сохраняем глобально для вебхуков
+        global telegram_app
+        telegram_app = application
+        
+        # Настраиваем обработчики
+        setup_handlers(application)
+        
+        # Запускаем планировщик курса
+        scheduler = CourseScheduler(application)
+        scheduler.start()
+        logger.info("✅ Course scheduler started")
+        
+        # Запускаем бота
+        logger.info("🚀 Starting bot polling...")
+        application.run_polling(
+            poll_interval=3.0,
+            timeout=20,
+            drop_pending_updates=True,
+            allowed_updates=['message', 'callback_query'],
+            bootstrap_retries=0,
+            close_loop=False
+        )
         
     except Exception as e:
         logger.error(f"💥 Error in main: {e}")

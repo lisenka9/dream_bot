@@ -58,6 +58,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("🔄 Создаю новый платеж...")
         await create_paypal_payment(query, context)
 
+    elif query.data == "marathon_info":
+        await show_marathon_info(query, context)
+    
+    elif query.data == "marathon_payment":
+        await show_marathon_payment_methods(query, context)
+    
+    elif query.data == "marathon_yookassa":
+        await create_marathon_yookassa_payment(query, context)
+    
+    elif query.data == "marathon_paypal":
+        await create_marathon_paypal_payment(query, context)
+    
+    elif query.data.startswith("check_marathon_yookassa_"):
+        await check_marathon_payment(query, context, "yookassa")
+    
+    elif query.data.startswith("check_marathon_paypal_"):
+        await check_marathon_payment(query, context, "paypal")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
     user = update.effective_user
@@ -195,7 +213,7 @@ async def create_yookassa_payment(query, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['last_payment_id'] = payment_id
         
         payment_text = f"""
-💳 *Оплата через ЮKassa*
+💳 *Оплата из России*
 ✅ *Стоимость:* 599 рублей
 
 Нажмите кнопку ниже для перехода к оплате.
@@ -224,7 +242,7 @@ async def create_paypal_payment(query, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['last_payment_id'] = payment_id
         
         payment_text = f"""
-💳 *Оплата через PayPal*
+💳 *Оплата из любой точки мира*
 ✅ *Стоимость:* 30 шекелей 
 
 Нажмите кнопку ниже для перехода к оплате.
@@ -406,6 +424,38 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
 async def activate_course_after_payment(user_id: int, payment_id: str, method: str, application):
     """Активирует курс после успешной оплаты"""
     try:
+        # Создаем запись о покупке курса
+        conn = db.get_connection()
+        if conn:
+            cursor = conn.cursor()
+            
+            # Проверяем, есть ли уже прогресс
+            cursor.execute(
+                "SELECT id FROM course_progress WHERE user_id = %s",
+                (user_id,)
+            )
+            
+            if cursor.fetchone():
+                # Обновляем существующую запись
+                cursor.execute('''
+                    UPDATE course_progress 
+                    SET current_day = 1,
+                        last_message_time = NOW(),
+                        is_active = TRUE,
+                        completed_at = NULL
+                    WHERE user_id = %s
+                ''', (user_id,))
+            else:
+                # Создаем новую запись
+                cursor.execute('''
+                    INSERT INTO course_progress 
+                    (user_id, current_day, last_message_time, is_active)
+                    VALUES (%s, 1, NOW(), TRUE)
+                ''', (user_id,))
+            
+            conn.commit()
+            conn.close()
+        
         # Отправляем сообщение об успешной оплате
         await application.bot.send_message(
             chat_id=user_id,
@@ -417,7 +467,7 @@ async def activate_course_after_payment(user_id: int, payment_id: str, method: s
             parse_mode='Markdown'
         )
         
-        # Отправляем День 1
+        # Сразу отправляем День 1
         await send_course_day1(user_id, application)
         
         # Уведомляем администратора
@@ -426,15 +476,101 @@ async def activate_course_after_payment(user_id: int, payment_id: str, method: s
             'payment_id': payment_id,
             'amount': 599.00 if method == "yookassa" else 30.00,
             'currency': "RUB" if method == "yookassa" else "ILS",
-            'payment_method': method
+            'payment_method': method,
+            'course_type': "7-day_course"
         })
         
-        # Запускаем отправку остальных дней
-        from bot import schedule_course_messages
-        await schedule_course_messages(user_id, application)
+        logger.info(f"✅ Course activated for user {user_id}")
         
     except Exception as e:
         logging.error(f"❌ Error activating course: {e}")
+        # Пытаемся отправить пользователю сообщение об ошибке
+        try:
+            await application.bot.send_message(
+                chat_id=user_id,
+                text="❌ Произошла ошибка при активации курса. Мы уже работаем над решением. Попробуйте позже."
+            )
+        except:
+            pass
+
+async def send_course_day1(user_id: int, application):
+    """Отправляет первый день курса немедленно"""
+    try:
+        # Получаем контент дня 1 из БД
+        content = db.get_course_content(1)
+        if not content:
+            # Если БД не работает, используем запасной вариант
+            await send_fallback_day1(user_id, application)
+            return
+        
+        messages = content['messages']
+        
+        # Отправляем первое сообщение с приветствием
+        await application.bot.send_message(
+            chat_id=user_id,
+            text="📅 **День 1/7**\n\n" + messages[0],
+            parse_mode='Markdown'
+        )
+        
+        # Отправляем остальные сообщения с задержкой
+        for i, message in enumerate(messages[1:], 1):
+            if message.strip():  # Пропускаем пустые строки
+                await asyncio.sleep(0.5)  # Небольшая задержка
+                await application.bot.send_message(
+                    chat_id=user_id,
+                    text=message,
+                    parse_mode='Markdown' if "**" in message or "•" in message else None
+                )
+        
+        logging.info(f"✅ Sent Day 1 to user {user_id}")
+        
+    except Exception as e:
+        logging.error(f"❌ Error sending Day 1: {e}")
+        # Запасной вариант
+        await send_fallback_day1(user_id, application)
+
+async def send_fallback_day1(user_id: int, application):
+    """Запасной вариант отправки дня 1 если БД не работает"""
+    try:
+        day1_messages = [
+            "📅 **День 1/7**\n\nЗдравствуйте! Сегодня — День 1 нашего путешествия: **Разбуди своего Мечтателя!**",
+            "Внутри каждого из нас живет **Внутренний Ребенок.** Именно эта часть личности умеет мечтать по-настоящему.",
+            "Чем свободнее Внутренний Ребенок, тем легче нам мечтать и наполнять желания **энергией** для их реализации.",
+            "",
+            "Задание Дня: **Создаем Базовый Список Желаний**",
+            "Приготовьте **ручку и лист бумаги.**",
+            "",
+            "Сядьте удобно, расслабьтесь. Представьте своего **Внутреннего Мечтателя,** погрузитесь в это состояние.",
+            "",
+            "Начинайте записывать **всё, что вспомните.** НЕ включайте логику и здравый смысл! Вспомните желания из прошлого, а затем добавьте те, что актуальны сейчас.",
+            "",
+            "Примеры того, что записываем:",
+            "• Желания, связанные с любовью, теплом и заботой.",
+            "• Потребности (отдых, еда, активность).",
+            "• Цели, достижения и материальные желания.",
+            "• Новые впечатления и познание мира.",
+            "",
+            "**Напоминание:**",
+            "Список можно дополнять, пока вы не получите следующее письмо от меня!",
+            "",
+            "Обязательно **СОХРАНИТЕ ЭТОТ СПИСОК!** Он понадобится вам для выполнения всех последующих заданий курса.",
+            "",
+            "До встречи завтра в это же время!"
+        ]
+        
+        for message in day1_messages:
+            if message.strip():
+                await application.bot.send_message(
+                    chat_id=user_id,
+                    text=message,
+                    parse_mode='Markdown' if "**" in message or "•" in message else None
+                )
+                await asyncio.sleep(0.5)
+                
+        logging.info(f"✅ Sent fallback Day 1 to user {user_id}")
+        
+    except Exception as e:
+        logging.error(f"❌ Error in fallback Day 1: {e}")
 
 async def back_to_payment_methods(query, context: ContextTypes.DEFAULT_TYPE):
     """Возврат к выбору метода оплаты"""
@@ -501,29 +637,6 @@ async def send_course_day1(user_id: int, application):
     except Exception as e:
         logging.error(f"❌ Error sending Day 1: {e}")
 
-# Глобальный словарь для хранения задач отправки
-user_tasks = {}
-
-# Контент курса (можно вынести в БД или отдельный файл)
-COURSE_CONTENT = {
-    1: [
-        "👋 Здравствуйте! Сегодня — День 1 нашего путешествия: **Разбуди своего Мечтателя!**",
-        "Внутри каждого из нас живет **Внутренний Ребенок**. Именно эта часть личности умеет мечтать по-настоящему. 👶",
-        "Чем свободнее Внутренний Ребенок, тем легче нам мечтать и наполнять желания **энергией** для их реализации.",
-        "",
-        "✨ **Задание Дня 1: Создаем Базовый Список Желаний**",
-        "Приготовьте **ручку и лист бумаги**. 📝",
-        "Сядьте удобно, расслабьтесь. Представьте своего **Внутреннего Мечтателя**...",
-        # ... остальной текст дня 1
-    ],
-    2: [
-        "🎉 **День 2: Уточняем и структурируем желания**",
-        "Сегодня мы будем работать со списком, который вы создали вчера.",
-        "Выделите 3 самых важных желания из вашего списка...",
-        # ... текст дня 2
-    ],
-    # ... дни 3-7
-}
 
 async def schedule_course_messages(user_id: int, application):
     """Планирует отправку 7-дневного курса"""
@@ -605,32 +718,6 @@ async def send_day_messages(user_id: int, day: int, application):
     except Exception as e:
         logging.error(f"❌ Error sending day {day} to user {user_id}: {e}")
 
-async def send_course_completion(user_id: int, application):
-    """Отправляет сообщение о завершении курса"""
-    completion_text = """
-🎉 **Поздравляем! Вы завершили 7-дневный курс "Путь к мечте"!**
-
-Вы проделали огромную работу над собой:
-✅ Разбудили своего Внутреннего Мечтателя
-✅ Сформулировали четкие цели
-✅ Создали план действий
-
-Теперь у вас есть все инструменты для реализации ваших желаний!
-
-Если вам понравился курс, поделитесь впечатлениями с друзьями ❤️
-
-С любовью,
-Светлана Скромова
-    """
-    
-    try:
-        await application.bot.send_message(
-            chat_id=user_id,
-            text=completion_text,
-            parse_mode='Markdown'
-        )
-    except Exception as e:
-        logging.error(f"Error sending completion to {user_id}: {e}")
 
 def update_user_progress(user_id: int, current_day: int):
     """Обновляет прогресс пользователя в БД"""
@@ -961,4 +1048,226 @@ async def check_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except Exception as e:
         logging.error(f"Error in check_user_command: {e}")
         await update.message.reply_text(f"❌ Ошибка: {e}")
+
+async def show_marathon_info(query, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает информацию о марафоне"""
+    marathon_info = """
+🌟 **МАРАФОН «ОТ МЕЧТЫ К ЦЕЛИ»**
+
+Вы прошли базовую подготовку на курсе, а Марафон поможет вам построить крепкое здание вашей мечты.
+
+Это глубокий, 21-дневный процесс, направленный на **ВНЕДРЕНИЕ ЖЕЛАНИЙ В РЕАЛЬНУЮ ЖИЗНЬ.**
+
+❓**ЧТО ВЫ ПОЛУЧИТЕ:**
+💡 ЕЖЕДНЕВНЫЕ ЗАДАНИЯ в разнообразных форматах: текстовые практики, медитации, визуализация, работа с МАК и составление карты основных целей.
+🧠 21 день вы будете находиться в **АКТИВНОМ СОПРИКОСНОВЕНИИ** со своими желаниями и мечтами, что позволит образоваться новым нейронным связям, которые помогут вам в итоге достичь желаемого.
+💖 Вы **ОСОЗНАЕТЕ СВОИ ЦЕННОСТИ,** то, что является для вас приоритетным.
+✅ Вы **СФОРМУЛИРУЕТЕ СВОИ ЖЕЛАНИЯ И ПОТРЕБНОСТИ,** опираясь на важные для вас ценности.
+🗓️ Вы **ПРОПИШЕТЕ КОНКРЕТНЫЕ ЦЕЛИ** на ближайшие 12 месяцев.
+🚀 Вы **СФОРМУЛИРУЕТЕ ШАГИ** для достижения целей.
+💰 Вы **ОСОЗНАЕТЕ СВОИ РЕСУРСЫ,** которые помогут вам достичь желаемого.
+🖼️ Вы **СОЗДАДИТЕ ЖЕЛАЕМУЮ КАРТИНКУ** своей жизни на ближайшее будущее.
+
+🎯 Закрепление навыка **доведения целей до конца.**
+
+🗓️ **СТАРТ: 4 ЯНВАРЯ 2026 ГОДА.**
+
+🤝 **ФОРМАТ И ПОДДЕРЖКА**
+⚡️Длительность: 21 день структурированной работы.
+⚡️Площадка: Ежедневная работа и сопровождение в **ГРУППОВОМ ЧАТЕ TELEGRAM.**
+⚡️Ценность сообщества: **ВЗАИМООБМЕН И ПЕРЕОПЫЛЕНИЕ** с другими участниками для **МОЩНОЙ ПОДДЕРЖКИ.**
+⚡️Сопровождение: Личная поддержка и ответы на вопросы от дипломированного **ПСИХОТЕРАПЕВТА.**
+
+🎁 **СПЕЦИАЛЬНАЯ СКИДКА 30%** действует для участников мини-курса! Не упустите возможность начать 2026 год с ясными целями и шагами для их реализации.
+"""
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💳 Оплатить участие со скидкой 30%", callback_data="marathon_payment")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="go_back")]
+    ])
+    
+    await query.message.reply_text(marathon_info, reply_markup=keyboard, parse_mode='Markdown')
+
+async def show_marathon_payment_methods(query, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает методы оплаты марафона"""
+    payment_text = """
+💳 **Оплата участия в марафоне**
+
+Выберите способ оплаты:
+
+🇷🇺 **Оплата из России** - 4900 рублей
+🌍 **Оплата из любой точки мира** - 245 шекелей
+
+Обе системы обеспечивают безопасную оплату и мгновенную активацию подписки.
+"""
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🇷🇺 Оплата из России (4900₽)", callback_data="marathon_yookassa")],
+        [InlineKeyboardButton("🌍 Оплата из любой точки мира (245₪)", callback_data="marathon_paypal")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="marathon_info")]
+    ])
+    
+    await query.message.reply_text(payment_text, reply_markup=keyboard, parse_mode='Markdown')
+
+async def create_marathon_yookassa_payment(query, context: ContextTypes.DEFAULT_TYPE):
+    """Создает платеж за марафон через ЮKassa"""
+    user_id = query.from_user.id
+    
+    # Создаем специальный payment_id для марафона
+    payment_id = f"marathon_{user_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    
+    # Используем существующую функцию с другими параметрами
+    payment_url = "https://yookassa.ru/my/i/aUZE2BSiqy8l/l"
+    
+    if payment_url:
+        # Сохраняем в БД как платеж за марафон
+        if db.create_payment(user_id, payment_id, 4900.00, "RUB", "yookassa_marathon"):
+            context.user_data['last_marathon_payment_id'] = payment_id
+            
+            payment_text = f"""
+💳 *Оплата из России*
+✅ *Стоимость:* 4900 рублей
+
+Нажмите кнопку ниже для перехода к оплате марафона «От мечты к цели».
+
+После успешной оплаты доступ к марафону будет активирован автоматически.
+
+🆔 *ID платежа:* `{payment_id}`
+            """
+            
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("💳 Перейти к оплате 4900₽", url=payment_url)],
+                [InlineKeyboardButton("🔄 Проверить оплату", callback_data=f"check_marathon_yookassa_{payment_id}")],
+                [InlineKeyboardButton("◀️ Назад", callback_data="marathon_payment")]
+            ])
+            
+            await query.message.reply_text(
+                payment_text,
+                reply_markup=keyboard,
+                parse_mode='Markdown'
+            )
+        else:
+            await query.answer("❌ Ошибка создания платежа", show_alert=True)
+
+async def create_marathon_paypal_payment(query, context: ContextTypes.DEFAULT_TYPE):
+    """Создает платеж за марафон через PayPal"""
+    user_id = query.from_user.id
+    
+    # Создаем специальный payment_id для марафона
+    payment_id = f"marathon_{user_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    
+    # Здесь будет ссылка на PayPal для марафона
+    payment_url = "ВАША_ССЫЛКА_PAYPAL_МАРАФОН"  # Замените на реальную ссылку
+    
+    if payment_url:
+        # Сохраняем в БД как платеж за марафон
+        if db.create_payment(user_id, payment_id, 245.00, "ILS", "paypal_marathon"):
+            context.user_data['last_marathon_payment_id'] = payment_id
+            
+            payment_text = f"""
+💳 *Оплата из любой точки мира*
+✅ *Стоимость:* 245 шекелей (₪)
+
+Нажмите кнопку ниже для перехода к оплате марафона «От мечты к цели».
+
+После успешной оплаты доступ к марафону будет активирован автоматически.
+
+🆔 *ID платежа:* `{payment_id}`
+            """
+            
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("💳 Перейти к оплате 245₪", url=payment_url)],
+                [InlineKeyboardButton("🔄 Проверить оплату", callback_data=f"check_marathon_paypal_{payment_id}")],
+                [InlineKeyboardButton("◀️ Назад", callback_data="marathon_payment")]
+            ])
+            
+            await query.message.reply_text(
+                payment_text,
+                reply_markup=keyboard,
+                parse_mode='Markdown'
+            )
+        else:
+            await query.answer("❌ Ошибка создания платежа", show_alert=True)
+
+async def check_marathon_payment(query, context: ContextTypes.DEFAULT_TYPE, method: str):
+    """Проверяет платеж за марафон"""
+    payment_id = query.data.replace(f"check_marathon_{method}_", "")
+    
+    try:
+        # Проверяем статус платежа
+        status = payment_processor.check_payment_status(payment_id)
+        
+        if status == "success":
+            # Активируем марафон
+            await activate_marathon(query.from_user.id, payment_id, method, context.application)
+            
+            # Удаляем сообщение с кнопкой проверки
+            try:
+                await query.delete_message()
+            except:
+                pass
+                
+        elif status == "pending":
+            await query.message.reply_text(
+                "⏳ *Платеж за марафон обрабатывается*\n\n"
+                "Подождите 2-3 минуты и нажмите «Проверить оплату» снова.",
+                parse_mode='Markdown'
+            )
+        else:
+            await query.message.reply_text(
+                f"❌ *Платеж не прошел*\n\n"
+                f"Статус: {status}\n\n"
+                "Попробуйте создать новый платеж или выберите другой способ оплаты.",
+                parse_mode='Markdown'
+            )
+            
+    except Exception as e:
+        logging.error(f"Error checking marathon payment: {e}")
+        await query.message.reply_text(
+            "❌ *Ошибка проверки платежа*\n\n"
+            "Попробуйте позже или обратитесь в поддержку.",
+            parse_mode='Markdown'
+        )
+
+async def activate_marathon(user_id: int, payment_id: str, method: str, application):
+    """Активирует доступ к марафону"""
+    try:
+        # Отправляем подтверждение
+        await application.bot.send_message(
+            chat_id=user_id,
+            text="""🎉 *Поздравляем с оплатой марафона «От мечты к цели»!*
+
+✅ **Ваша оплата подтверждена!**
+
+📅 **Старт марафона:** 4 января 2026 года
+
+""",
+            parse_mode='Markdown'
+        )
+        
+        # Уведомляем администратора о платеже за марафон
+        payment_processor.notify_admin({
+            'user_id': user_id,
+            'payment_id': payment_id,
+            'amount': 4900.00 if method == "yookassa" else 245.00,
+            'currency': "RUB" if method == "yookassa" else "ILS",
+            'payment_method': method,
+            'course_type': "21-day_marathon"
+        })
+        
+        # Сохраняем информацию о покупке марафона
+        conn = db.get_connection()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO marathon_purchases (user_id, payment_id, start_date)
+                VALUES (%s, %s, %s)
+            ''', (user_id, payment_id, "2026-01-04"))
+            conn.commit()
+            conn.close()
+        
+        logger.info(f"✅ Marathon activated for user {user_id}")
+        
+    except Exception as e:
+        logging.error(f"❌ Error activating marathon: {e}")
 

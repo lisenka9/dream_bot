@@ -331,20 +331,32 @@ class PaymentProcessor:
             
             bot = Bot(token=BOT_TOKEN)
             
-            # Получаем информацию о пользователе из БД
+            # Определяем тип курса
+            course_type = payment_data.get('course_type', '7-day_course')
+            if course_type == '7-day_course':
+                course_name = "7-дневный курс «Путь к мечте»"
+            elif course_type == '21-day_marathon':
+                course_name = "21-дневный марафон «От мечты к цели»"
+            else:
+                course_name = "курс"
+            
+            # Получаем информацию о пользователе
             conn = self.db.get_connection()
             user_info = None
             if conn:
                 try:
                     cursor = conn.cursor()
                     cursor.execute(
-                        "SELECT username, first_name, last_name FROM users WHERE user_id = %s",
+                        "SELECT username, first_name FROM users WHERE user_id = %s",
                         (payment_data['user_id'],)
                     )
                     result = cursor.fetchone()
                     if result:
-                        username, first_name, last_name = result
-                        user_info = f"👤 {first_name} {last_name} (@{username})" if username else f"👤 {first_name} {last_name}"
+                        username, first_name = result
+                        if username:
+                            user_info = f"👤 {first_name} (@{username})"
+                        else:
+                            user_info = f"👤 {first_name}"
                 except Exception as e:
                     logger.error(f"Error getting user info: {e}")
                 finally:
@@ -354,15 +366,15 @@ class PaymentProcessor:
                 user_info = f"👤 ID: {payment_data['user_id']}"
             
             message = f"""
-    💰 *НОВАЯ ОПЛАТА КУРСА!*
+    💰 *НОВАЯ ОПЛАТА {course_name.upper()}!*
 
     {user_info}
+    📚 *Курс:* {course_name}
     💳 *Система:* {payment_data['payment_method'].upper()}
     💎 *Сумма:* {payment_data['amount']} {payment_data['currency']}
     🆔 *ID платежа:* `{payment_data['payment_id']}`
     ⏰ *Время:* {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
-    📊 *Статус:* ✅ Успешно
-            """
+    """
             
             # Отправляем всем администраторам
             for admin_id in ADMIN_IDS:
@@ -378,4 +390,3 @@ class PaymentProcessor:
                     
         except Exception as e:
             logger.error(f"Error in admin notification: {e}")
-
