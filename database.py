@@ -397,38 +397,6 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def get_course_content(self, day_number: int):
-        """Получает контент для конкретного дня курса"""
-        conn = self.get_connection()
-        if not conn:
-            return None
-        
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT messages, has_images, image_urls FROM course_content WHERE day_number = %s",
-                (day_number,)
-            )
-            result = cursor.fetchone()
-            
-            if result:
-                messages = json.loads(result[0])
-                has_images = result[1]
-                image_urls = result[2] if result[2] else []
-                
-                return {
-                    'messages': messages,
-                    'has_images': has_images,
-                    'image_urls': image_urls
-                }
-            return None
-            
-        except Exception as e:
-            logger.error(f"❌ Error getting course content: {e}")
-            return None
-        finally:
-            conn.close()     
-
     def get_or_create_user(self, user_id: int, username: str, 
                           first_name: str, last_name: str) -> bool:
         """Создает или получает пользователя"""
@@ -525,26 +493,63 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def get_course_content(self, day_number):
-        """Получает контент для конкретного дня"""
+    def get_course_content(self, day_number: int):
+        """Получает контент для конкретного дня курса"""
+        print(f"🔄 Запрашиваю контент дня {day_number}")
+        
         conn = self.get_connection()
-        if conn is None:
+        if not conn:
+            print("❌ Нет подключения к БД")
             return None
         
-        cursor = conn.cursor()
         try:
+            cursor = conn.cursor()
             cursor.execute(
-                'SELECT messages FROM course_content WHERE day_number = %s',
+                "SELECT messages, has_images, image_urls FROM course_content WHERE day_number = %s",
                 (day_number,)
             )
             result = cursor.fetchone()
-            return result[0] if result else None
+            
+            if result:
+                print(f"✅ Найден контент дня {day_number}")
+                messages = result[0]
+                has_images = result[1]
+                image_urls = result[2] if result[2] else []
+                
+                # Проверяем тип messages
+                print(f"📋 Тип messages: {type(messages)}")
+                
+                # Если messages это строка (JSON), парсим ее
+                if isinstance(messages, str):
+                    try:
+                        messages_list = json.loads(messages)
+                        print(f"✅ JSON распарсен, {len(messages_list)} сообщений")
+                    except Exception as e:
+                        print(f"❌ Ошибка парсинга JSON: {e}")
+                        messages_list = [messages]  # Используем как одно сообщение
+                elif isinstance(messages, list):
+                    messages_list = messages
+                else:
+                    print(f"⚠️ Неизвестный тип messages: {type(messages)}")
+                    messages_list = [str(messages)]
+                
+                return {
+                    'messages': messages_list,
+                    'has_images': has_images,
+                    'image_urls': image_urls
+                }
+            else:
+                print(f"❌ Контент дня {day_number} не найден в БД")
+                return None
+                
         except Exception as e:
-            logging.error(f"❌ Error getting course content: {e}")
+            print(f"❌ Ошибка получения контента дня {day_number}: {e}")
+            import traceback
+            traceback.print_exc()
             return None
         finally:
             conn.close()
-    
+
     def update_user_progress(self, user_id, day_number):
         """Обновляет прогресс пользователя после отправки сообщений"""
         conn = self.get_connection()

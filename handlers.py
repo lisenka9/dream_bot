@@ -553,47 +553,57 @@ async def back_to_payment_methods(query, context: ContextTypes.DEFAULT_TYPE):
 
 async def send_course_day1(user_id: int, application):
     """Отправляет первый день курса"""
-    logging.info(f"📖 START send_course_day1 for user {user_id}")
+    print(f"📖 START send_course_day1 for user {user_id}")
     
     try:
         # Получаем контент дня 1 из БД
-        logging.info(f"📊 Getting course content for day 1")
+        print(f"📊 Getting course content for day 1")
         content = db.get_course_content(1)
         
-        if not content:
-            logging.error("❌ No content found for day 1")
-            # Отправляем fallback сообщение
+        if content:
+            messages = content['messages']
+            print(f"📋 Found content with {len(messages) if isinstance(messages, list) else 1} messages")
+            
+            # Проверяем тип messages
+            if isinstance(messages, list):
+                for i, message in enumerate(messages):
+                    if message and str(message).strip():
+                        try:
+                            print(f"📨 Sending message {i+1}/{len(messages)}")
+                            await application.bot.send_message(
+                                chat_id=user_id,
+                                text=str(message),
+                                parse_mode='Markdown' if "**" in str(message) else None
+                            )
+                            await asyncio.sleep(1)
+                        except Exception as e:
+                            print(f"❌ Error sending message {i+1}: {e}")
+            else:
+                # Если messages не список, отправляем как одно сообщение
+                await application.bot.send_message(
+                    chat_id=user_id,
+                    text=str(messages),
+                    parse_mode='Markdown' if "**" in str(messages) else None
+                )
+            
+            print(f"✅ Day 1 sent to user {user_id}")
+        else:
+            print(f"❌ No content for day 1")
+            # Отправляем fallback
             await send_fallback_day1(user_id, application)
-            return
-        
-        messages = content['messages']
-        logging.info(f"📋 Found {len(messages)} messages for day 1")
-        
-        # Отправляем каждое сообщение
-        for i, message in enumerate(messages):
-            if message.strip():  # Пропускаем пустые строки
-                try:
-                    logging.info(f"📨 Sending message {i+1}/{len(messages)} to {user_id}")
-                    await application.bot.send_message(
-                        chat_id=user_id,
-                        text=message,
-                        parse_mode='Markdown'
-                    )
-                    await asyncio.sleep(1)  # Задержка между сообщениями
-                except Exception as e:
-                    logging.error(f"❌ Error sending message {i+1} to {user_id}: {e}")
-        
-        logging.info(f"✅ Day 1 sent to user {user_id}")
         
     except Exception as e:
-        logging.error(f"❌ Error in send_course_day1 for user {user_id}: {e}", exc_info=True)
-        # Пробуем отправить хотя бы одно сообщение
+        print(f"❌ Error in send_course_day1: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Пробуем отправить хотя бы простую версию
         try:
             await application.bot.send_message(
                 chat_id=user_id,
                 text="👋 **День 1: Разбуди своего Мечтателя!**\n\n"
-                     "К сожалению, произошла техническая ошибка. Мы уже работаем над исправлением.\n\n"
-                     "Попробуйте позже или напишите в поддержку."
+                     "К сожалению, произошла техническая ошибка при отправке полного контента.\n\n"
+                     "Мы уже работаем над исправлением. Попробуйте позже."
             )
         except:
             pass
@@ -1297,45 +1307,46 @@ async def check_content_command(update: Update, context: ContextTypes.DEFAULT_TY
         return
     
     try:
-        # Проверяем контент для всех дней
-        days_info = []
-        for day in range(1, 8):
-            content = db.get_course_content(day)
-            if content:
-                messages = content['messages']
-                has_images = content['has_images']
-                image_count = len(content.get('image_urls', []))
-                
-                days_info.append(
-                    f"День {day}: {len(messages)} сообщений, "
-                    f"картинки: {'✅' if has_images else '❌'} ({image_count})"
-                )
-            else:
-                days_info.append(f"День {day}: ❌ Нет контента")
-        
         # Проверяем таблицу course_content
         conn = db.get_connection()
-        if conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM course_content")
-            count = cursor.fetchone()[0]
-            conn.close()
-            
-            status_text = (
-                f"📊 Статус контента курса:\n\n"
-                f"Всего дней в БД: {count}/7\n\n" +
-                "\n".join(days_info) +
-                f"\n\nID: {user.id}"
-            )
-        else:
-            status_text = "❌ Нет подключения к БД"
+        if not conn:
+            await update.message.reply_text("❌ Нет подключения к БД")
+            return
         
-        # Отправляем без parse_mode
+        cursor = conn.cursor()
+        
+        # Получаем все дни
+        cursor.execute("SELECT day_number, messages FROM course_content ORDER BY day_number")
+        rows = cursor.fetchall()
+        conn.close()
+        
+        days_info = []
+        for row in rows:
+            day_number, messages = row
+            if isinstance(messages, str):
+                try:
+                    import json
+                    messages_list = json.loads(messages)
+                    message_count = len(messages_list) if isinstance(messages_list, list) else 1
+                except:
+                    message_count = 1
+            elif isinstance(messages, list):
+                message_count = len(messages)
+            else:
+                message_count = 1
+            
+            days_info.append(f"📅 День {day_number}: {message_count} сообщений")
+        
+        if days_info:
+            status_text = "📊 Контент курса:\n\n" + "\n".join(days_info)
+        else:
+            status_text = "📭 В БД нет контента"
+        
         await update.message.reply_text(status_text)
         
     except Exception as e:
-        error_msg = str(e).replace('*', '').replace('_', '').replace('`', "'")
-        await update.message.reply_text(f"❌ Ошибка: {error_msg[:100]}")
+        print(f"❌ Ошибка check_content: {e}")
+        await update.message.reply_text(f"❌ Ошибка: {str(e)[:100]}")
 
 async def recreate_content_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Пересоздает контент курса"""
@@ -1393,3 +1404,68 @@ async def test_simple_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {str(e)[:100]}")
 
+async def debug_content_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отладочная команда для просмотра структуры контента"""
+    user = update.effective_user
+    
+    from config import ADMIN_IDS
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("Нет доступа")
+        return
+    
+    try:
+        conn = db.get_connection()
+        if not conn:
+            await update.message.reply_text("❌ Нет БД")
+            return
+        
+        cursor = conn.cursor()
+        
+        # Получаем структуру таблицы
+        cursor.execute("""
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'course_content'
+        """)
+        columns = cursor.fetchall()
+        
+        # Получаем данные
+        cursor.execute("SELECT * FROM course_content")
+        rows = cursor.fetchall()
+        
+        conn.close()
+        
+        # Формируем сообщение
+        result = "📊 Структура таблицы course_content:\n\n"
+        
+        for col_name, col_type in columns:
+            result += f"• {col_name}: {col_type}\n"
+        
+        result += f"\n📈 Записей: {len(rows)}\n\n"
+        
+        for i, row in enumerate(rows):
+            result += f"Запись {i+1}:\n"
+            for j, col in enumerate(row):
+                col_name = columns[j][0] if j < len(columns) else f"col_{j}"
+                if col_name == 'messages':
+                    if isinstance(col, str):
+                        result += f"  {col_name}: строка ({len(col)} chars)\n"
+                    elif isinstance(col, list):
+                        result += f"  {col_name}: список ({len(col)} items)\n"
+                    else:
+                        result += f"  {col_name}: {type(col).__name__}\n"
+                else:
+                    result += f"  {col_name}: {col}\n"
+            result += "\n"
+        
+        # Разбиваем на части если слишком длинное
+        if len(result) > 4000:
+            parts = [result[i:i+4000] for i in range(0, len(result), 4000)]
+            for part in parts:
+                await update.message.reply_text(part)
+        else:
+            await update.message.reply_text(result)
+            
+    except Exception as e:
+        print(f"Debug error: {e}")
+        await update.message.reply_text(f"Ошибка: {str(e)[:200]}")
