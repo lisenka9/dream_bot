@@ -462,6 +462,7 @@ def setup_handlers(application):
     application.add_handler(CommandHandler("stats", handlers.stats_command))
     application.add_handler(CommandHandler("check_user", handlers.check_user_command))
     application.add_handler(CommandHandler("reset_course", handlers.reset_course_command))
+    application.add_handler(CommandHandler("check_content", handlers.check_content_command))
 
     application.add_handler(CallbackQueryHandler(handlers.button_handler))
 

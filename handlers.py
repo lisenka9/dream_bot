@@ -423,40 +423,33 @@ async def check_specific_payment(query, context: ContextTypes.DEFAULT_TYPE, meth
 
 async def activate_course_after_payment(user_id: int, payment_id: str, method: str, application):
     """Активирует курс после успешной оплаты"""
+    logging.info(f"🚀 START activate_course_after_payment for user {user_id}")
+    
     try:
         # Создаем запись о покупке курса
+        logging.info(f"📝 Creating course progress for user {user_id}")
         conn = db.get_connection()
         if conn:
             cursor = conn.cursor()
             
-            # Проверяем, есть ли уже прогресс
-            cursor.execute(
-                "SELECT id FROM course_progress WHERE user_id = %s",
-                (user_id,)
-            )
+            # Удаляем старую запись если есть
+            cursor.execute("DELETE FROM course_progress WHERE user_id = %s", (user_id,))
             
-            if cursor.fetchone():
-                # Обновляем существующую запись
-                cursor.execute('''
-                    UPDATE course_progress 
-                    SET current_day = 1,
-                        last_message_date = NOW(),  # Используем last_message_date
-                        is_active = TRUE,
-                        completed_at = NULL
-                    WHERE user_id = %s
-                ''', (user_id,))
-            else:
-                # Создаем новую запись
-                cursor.execute('''
-                    INSERT INTO course_progress 
-                    (user_id, current_day, last_message_date, is_active)
-                    VALUES (%s, 1, NOW(), TRUE)
-                ''', (user_id,))
+            # Создаем новую запись
+            cursor.execute('''
+                INSERT INTO course_progress 
+                (user_id, current_day, last_message_date, is_active)
+                VALUES (%s, 1, NOW(), TRUE)
+            ''', (user_id,))
             
             conn.commit()
             conn.close()
+            logging.info(f"✅ Course progress created for user {user_id}")
+        else:
+            logging.error("❌ No database connection")
         
         # Отправляем сообщение об успешной оплате
+        logging.info(f"📨 Sending success message to user {user_id}")
         await application.bot.send_message(
             chat_id=user_id,
             text="""✅ *Оплата прошла успешно!*
@@ -468,9 +461,11 @@ async def activate_course_after_payment(user_id: int, payment_id: str, method: s
         )
         
         # Сразу отправляем День 1
+        logging.info(f"📚 Sending Day 1 to user {user_id}")
         await send_course_day1(user_id, application)
         
         # Уведомляем администратора
+        logging.info(f"📢 Notifying admin about user {user_id}")
         payment_processor.notify_admin({
             'user_id': user_id,
             'payment_id': payment_id,
@@ -480,10 +475,11 @@ async def activate_course_after_payment(user_id: int, payment_id: str, method: s
             'course_type': "7-day_course"
         })
         
-        logger.info(f"✅ Course activated for user {user_id}")
+        logging.info(f"✅ Course fully activated for user {user_id}")
         
     except Exception as e:
-        logging.error(f"❌ Error activating course: {e}")
+        logging.error(f"❌ Error activating course for user {user_id}: {e}", exc_info=True)
+        # Пытаемся отправить пользователю сообщение об ошибке
         try:
             await application.bot.send_message(
                 chat_id=user_id,
@@ -491,7 +487,6 @@ async def activate_course_after_payment(user_id: int, payment_id: str, method: s
             )
         except:
             pass
-
 
 async def send_fallback_day1(user_id: int, application):
     """Запасной вариант отправки дня 1 если БД не работает"""
@@ -556,51 +551,87 @@ async def back_to_payment_methods(query, context: ContextTypes.DEFAULT_TYPE):
 
 async def send_course_day1(user_id: int, application):
     """Отправляет первый день курса"""
+    logging.info(f"📖 START send_course_day1 for user {user_id}")
+    
     try:
-        # День 1 - Разбуди своего Мечтателя
+        # Получаем контент дня 1 из БД
+        logging.info(f"📊 Getting course content for day 1")
+        content = db.get_course_content(1)
+        
+        if not content:
+            logging.error("❌ No content found for day 1")
+            # Отправляем fallback сообщение
+            await send_fallback_day1(user_id, application)
+            return
+        
+        messages = content['messages']
+        logging.info(f"📋 Found {len(messages)} messages for day 1")
+        
+        # Отправляем каждое сообщение
+        for i, message in enumerate(messages):
+            if message.strip():  # Пропускаем пустые строки
+                try:
+                    logging.info(f"📨 Sending message {i+1}/{len(messages)} to {user_id}")
+                    await application.bot.send_message(
+                        chat_id=user_id,
+                        text=message,
+                        parse_mode='Markdown'
+                    )
+                    await asyncio.sleep(1)  # Задержка между сообщениями
+                except Exception as e:
+                    logging.error(f"❌ Error sending message {i+1} to {user_id}: {e}")
+        
+        logging.info(f"✅ Day 1 sent to user {user_id}")
+        
+    except Exception as e:
+        logging.error(f"❌ Error in send_course_day1 for user {user_id}: {e}", exc_info=True)
+        # Пробуем отправить хотя бы одно сообщение
+        try:
+            await application.bot.send_message(
+                chat_id=user_id,
+                text="👋 **День 1: Разбуди своего Мечтателя!**\n\n"
+                     "К сожалению, произошла техническая ошибка. Мы уже работаем над исправлением.\n\n"
+                     "Попробуйте позже или напишите в поддержку."
+            )
+        except:
+            pass
+
+async def send_fallback_day1(user_id: int, application):
+    """Запасной вариант отправки дня 1"""
+    try:
         day1_messages = [
-            "👋 Здравствуйте! Сегодня — День 1 нашего путешествия: **Разбуди своего Мечтателя!**",
-            "",
-            "Внутри каждого из нас живет **Внутренний Ребенок**. Именно эта часть личности умеет мечтать по-настоящему. 👶",
-            "",
+            "👋 **Здравствуйте! Сегодня — День 1 нашего путешествия: Разбуди своего Мечтателя!**\n\n"
+            "Внутри каждого из нас живет **Внутренний Ребенок.** Именно эта часть личности умеет мечтать по-настоящему. 👶\n\n"
             "Чем свободнее Внутренний Ребенок, тем легче нам мечтать и наполнять желания **энергией** для их реализации.",
-            "",
-            "✨ **Задание Дня 1: Создаем Базовый Список Желаний**",
-            "Приготовьте **ручку и лист бумаги**. 📝",
-            "",
-            "Сядьте удобно, расслабьтесь. Представьте своего **Внутреннего Мечтателя**, погрузитесь в это состояние.",
-            "",
-            "Начинайте записывать **всё, что вспомните**. НЕ включайте логику и здравый смысл! Вспомните желания из прошлого, а затем добавьте те, что актуальны сейчас.",
-            "",
-            "Примеры того, что записываем:",
-            "• 💖 Желания, связанные с любовью, теплом и заботой.",
-            "• 🤸‍♀️ Потребности (отдых, еда, активность).",
-            "• 🏆 Цели, достижения и материальные желания.",
+            
+            "✨ **Задание Дня: Создаем Базовый Список Желаний**\n"
+            "Приготовьте **ручку и лист бумаги.** 📝\n\n"
+            "Сядьте удобно, расслабьтесь. Представьте своего **Внутреннего Мечтателя,** погрузитесь в это состояние.\n\n"
+            "Начинайте записывать **всё, что вспомните.** НЕ включайте логику и здравый смысл! Вспомните желания из прошлого, а затем добавьте те, что актуальны сейчас.\n\n"
+            "**Примеры того, что записываем:**\n"
+            "• 💖 Желания, связанные с любовью, теплом и заботой.\n"
+            "• 🤸‍♀️ Потребности (отдых, еда, активность).\n"
+            "• 🏆 Цели, достижения и материальные желания.\n"
             "• 🌍 Новые впечатления и познание мира.",
-            "",
-            "✍️ **Напоминание:**",
-            "Список можно дополнять, пока вы не получите следующее письмо от меня!",
-            "",
-            "Обязательно **СОХРАНИТЕ ЭТОТ СПИСОК!** Он понадобится вам для выполнения всех последующих заданий курса.",
-            "",
-            "⏰ До встречи завтра в это же время!"
+            
+            "✍️ **Напоминание:**\n"
+            "Список можно дополнять, пока вы не получите следующее письмо от меня!\n\n"
+            "Обязательно **СОХРАНИТЕ ЭТОТ СПИСОК!** Он понадобится вам для выполнения всех последующих заданий курса.\n\n"
+            "⏰ **До встречи завтра в это же время!**"
         ]
         
         for message in day1_messages:
-            if message.strip():  # Пропускаем пустые строки
-                await application.bot.send_message(
-                    chat_id=user_id,
-                    text=message,
-                    parse_mode='Markdown' if "**" in message or "•" in message else None
-                )
-                import asyncio
-                await asyncio.sleep(0.5)  # Небольшая задержка между сообщениями
-                
-        logging.info(f"✅ Sent Day 1 to user {user_id}")
+            await application.bot.send_message(
+                chat_id=user_id,
+                text=message,
+                parse_mode='Markdown'
+            )
+            await asyncio.sleep(1)
+            
+        logging.info(f"✅ Fallback Day 1 sent to user {user_id}")
         
     except Exception as e:
-        logging.error(f"❌ Error sending Day 1: {e}")
-
+        logging.error(f"❌ Error in fallback Day 1: {e}")
 
 async def schedule_course_messages(user_id: int, application):
     """Планирует отправку 7-дневного курса"""
@@ -783,6 +814,7 @@ async def activate_course_command(update: Update, context: ContextTypes.DEFAULT_
     
     try:
         target_user_id = int(context.args[0])
+        logging.info(f"🎯 Admin {user.id} activating course for user {target_user_id}")
         
         # Проверяем, существует ли пользователь
         conn = db.get_connection()
@@ -814,7 +846,7 @@ async def activate_course_command(update: Update, context: ContextTypes.DEFAULT_
                 context.application
             )
             
-            # Отправляем уведомление администратору
+            # Уведомляем администратора
             payment_processor.notify_admin({
                 'user_id': target_user_id,
                 'payment_id': payment_id,
@@ -829,26 +861,14 @@ async def activate_course_command(update: Update, context: ContextTypes.DEFAULT_
                 parse_mode='Markdown'
             )
             
-            # Отправляем сообщение пользователю
-            try:
-                await context.application.bot.send_message(
-                    chat_id=target_user_id,
-                    text="🎉 *Доступ к курсу «Путь к мечте» был активирован!*\n\n"
-                         "Первое задание уже ждет вас ниже ⬇️",
-                    parse_mode='Markdown'
-                )
-            except Exception as e:
-                await update.message.reply_text(
-                    f"✅ Курс активирован, но не удалось отправить сообщение пользователю: {e}"
-                )
         else:
             await update.message.reply_text("❌ Ошибка при создании записи об активации.")
             
     except ValueError:
         await update.message.reply_text("❌ Неверный формат ID пользователя. Используйте числа.")
     except Exception as e:
-        logging.error(f"Error in activate_course_command: {e}")
-        await update.message.reply_text(f"❌ Ошибка: {e}")
+        logging.error(f"Error in activate_course_command: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Ошибка: {str(e)[:100]}")
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает статистику (только для администраторов)"""
@@ -1263,5 +1283,87 @@ async def reset_course_command(update: Update, context: ContextTypes.DEFAULT_TYP
         
     except Exception as e:
         logger.error(f"Error resetting course: {e}")
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+async def check_content_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверяет наличие контента курса"""
+    user = update.effective_user
+    
+    from config import ADMIN_IDS
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Только для администраторов")
+        return
+    
+    try:
+        # Проверяем контент для всех дней
+        days_info = []
+        for day in range(1, 8):
+            content = db.get_course_content(day)
+            if content:
+                messages = content['messages']
+                has_images = content['has_images']
+                image_count = len(content.get('image_urls', []))
+                
+                days_info.append(
+                    f"📅 **День {day}:** {len(messages)} сообщений, "
+                    f"картинки: {'✅' if has_images else '❌'} ({image_count})"
+                )
+            else:
+                days_info.append(f"📅 **День {day}:** ❌ Нет контента")
+        
+        # Проверяем таблицу course_content
+        conn = db.get_connection()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM course_content")
+            count = cursor.fetchone()[0]
+            conn.close()
+            
+            status_text = (
+                f"📊 **Статус контента курса:**\n\n"
+                f"Всего дней в БД: {count}/7\n\n" +
+                "\n".join(days_info) +
+                f"\n\n🆔 Ваш ID: `{user.id}`"
+            )
+        else:
+            status_text = "❌ Нет подключения к БД"
+        
+        await update.message.reply_text(status_text, parse_mode='Markdown')
+        
+    except Exception as e:
+        logging.error(f"Error in check_content: {e}")
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+async def recreate_content_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Пересоздает контент курса"""
+    user = update.effective_user
+    
+    from config import ADMIN_IDS
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Только для администраторов")
+        return
+    
+    try:
+        await update.message.reply_text("🔄 Пересоздаю контент курса...")
+        
+        # Очищаем старый контент
+        conn = db.get_connection()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM course_content")
+            conn.commit()
+            conn.close()
+        
+        # Создаем новый контент
+        db.initialize_course_content()
+        
+        await update.message.reply_text(
+            "✅ Контент курса успешно пересоздан!\n\n"
+            "Используйте /check_content для проверки.",
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logging.error(f"Error recreating content: {e}")
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
