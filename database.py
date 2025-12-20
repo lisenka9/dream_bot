@@ -671,4 +671,4 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    db = DatabaseManager()
+db = DatabaseManager()
