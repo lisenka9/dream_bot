@@ -671,48 +671,4 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    @staticmethod
-    def clean_markdown_text(text):
-        """Очищает текст от конфликтующих символов для Markdown, сохраняя разметку"""
-        if not text:
-            return text
-        
-        # Сохраняем оригинальный текст для отладки
-        print(f"🔧 Очистка текста. Исходный: {text[:100]}...")
-        
-        # Убираем только проблемные символы, не трогая ** для жирного и * для курсива
-        import re
-        
-        # Заменяем:
-        # 1. Одинарные _ (но не __)
-        text = re.sub(r'(?<!_)_(?!_)', r'\\_', text)
-        # 2. Одинарные ` (но не ``)
-        text = re.sub(r'(?<!`)`(?!`)', r'\\`', text)
-        # 3. [ и ] (кроме пар для ссылок)
-        text = text.replace('[', r'\[').replace(']', r'\]')
-        # 4. ( и ) в контексте ссылок
-        text = text.replace('(', r'\(').replace(')', r'\)')
-        # 5. ~
-        text = text.replace('~', r'\~')
-        # 6. > в начале строки
-        text = re.sub(r'^>', r'\>', text, flags=re.MULTILINE)
-        # 7. # в начале строки
-        text = re.sub(r'^#', r'\#', text, flags=re.MULTILINE)
-        # 8. + в начале строки
-        text = re.sub(r'^\+', r'\+', text, flags=re.MULTILINE)
-        # 9. - в начале строки
-        text = re.sub(r'^-', r'\-', text, flags=re.MULTILINE)
-        # 10. = в начале строки
-        text = re.sub(r'^=', r'\=', text, flags=re.MULTILINE)
-        # 11. | 
-        text = text.replace('|', r'\|')
-        # 12. { и }
-        text = text.replace('{', r'\{').replace('}', r'\}')
-        # 13. . после номера в начале строки
-        text = re.sub(r'^\d+\.', lambda m: m.group().replace('.', r'\.'), text, flags=re.MULTILINE)
-        # 14. ! перед [
-        text = re.sub(r'!\[', r'!\[', text)
-        
-        print(f"🔧 Очищенный текст: {text[:100]}...")
-        return text
-db = DatabaseManager()
+    db = DatabaseManager()

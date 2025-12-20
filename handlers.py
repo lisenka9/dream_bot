@@ -570,44 +570,37 @@ async def send_course_day1(user_id: int, application):
                     if message and str(message).strip():
                         try:
                             print(f"📨 Sending message {i+1}/{len(messages)}")
+                            print(f"📄 Message preview: {str(message)[:100]}...")
                             
-                            # СНАЧАЛА отправляем без Markdown для отладки
-                            print(f"📄 Message content preview: {str(message)[:100]}...")
-                            
-                            # Попробуем почистить текст от возможных конфликтов
-                            clean_message = self.clean_markdown_text(str(message))
-                            
+                            # Просто отправляем с Markdown, без очистки
                             await application.bot.send_message(
                                 chat_id=user_id,
-                                text=clean_message,
+                                text=str(message),
                                 parse_mode='Markdown'
                             )
                             await asyncio.sleep(1)
                         except Exception as e:
-                            print(f"❌ Error sending message {i+1}: {e}")
-                            # Если ошибка с Markdown, отправляем без разметки
+                            print(f"❌ Error sending message {i+1} with Markdown: {e}")
+                            # Попробуем HTML
                             try:
+                                html_message = str(message).replace('**', '<b>').replace('**', '</b>')
+                                await application.bot.send_message(
+                                    chat_id=user_id,
+                                    text=html_message,
+                                    parse_mode='HTML'
+                                )
+                            except Exception as e2:
+                                print(f"❌ Error with HTML: {e2}")
+                                # Отправляем без разметки
                                 await application.bot.send_message(
                                     chat_id=user_id,
                                     text=str(message),
                                     parse_mode=None
                                 )
-                                print(f"✅ Message {i+1} sent without markdown")
-                            except Exception as e2:
-                                print(f"❌ Error even without markdown: {e2}")
-            else:
-                # Если messages не список, отправляем как одно сообщение
-                clean_message = self.clean_markdown_text(str(messages))
-                await application.bot.send_message(
-                    chat_id=user_id,
-                    text=clean_message,
-                    parse_mode='Markdown'
-                )
             
             print(f"✅ Day 1 sent to user {user_id}")
         else:
             print(f"❌ No content for day 1")
-            # Отправляем fallback
             await send_fallback_day1(user_id, application)
         
     except Exception as e:
