@@ -12,6 +12,8 @@ from database import db
 from config import ADMIN_IDS
 import keyboard
 
+
+logger = logging.getLogger(__name__)
 payment_processor = PaymentProcessor(db)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1353,6 +1355,7 @@ async def recreate_content_command(update: Update, context: ContextTypes.DEFAULT
             cursor.execute("DELETE FROM course_content")
             conn.commit()
             conn.close()
+            logger.info("✅ Очищен старый контент")
         
         # Создаем новый контент
         db.initialize_course_content()
@@ -1363,7 +1366,8 @@ async def recreate_content_command(update: Update, context: ContextTypes.DEFAULT
             parse_mode='Markdown'
         )
         
+        logger.info(f"✅ Контент пересоздан администратором {user.id}")
+        
     except Exception as e:
-        logging.error(f"Error recreating content: {e}")
-        await update.message.reply_text(f"❌ Ошибка: {e}")
-
+        logger.error(f"Error recreating content: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Ошибка: {str(e)[:100]}")
