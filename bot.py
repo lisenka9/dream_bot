@@ -443,13 +443,26 @@ def ping_self():
         # Ждем 10 минут (600 секунд)
         time.sleep(600)
 
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обработчик ошибок"""
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик ошибок в хендлерах"""
     try:
-        logger.error(f"Exception while handling an update: {context.error}")
-        logger.error("Full traceback:", exc_info=context.error)
+        error = context.error
+        
+        # Логируем ошибку
+        logging.error(f"Exception while handling an update: {context.error}")
+        
+        # Пытаемся отправить пользователю сообщение об ошибке
+        try:
+            if update and update.effective_chat:
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="❌ Произошла техническая ошибка. Попробуйте позже."
+                )
+        except:
+            pass
+            
     except Exception as e:
-        logger.error(f"Error in error handler itself: {e}")
+        logging.error(f"Error in error handler: {e}")
 
 def setup_handlers(application):
     """Настройка всех обработчиков команд"""
@@ -482,11 +495,10 @@ async def enhanced_error_handler(update: object, context: ContextTypes.DEFAULT_T
 
 def run_bot():
     """Запускает бота в основном потоке"""
-    max_retries = 3
+    max_retries = 5
     retry_delay = 30
     
     for attempt in range(max_retries):
-        # Проверяем флаг shutdown перед каждой попыткой
         if shutdown_manager.shutdown_event.is_set():
             logger.info("🛑 Shutdown detected, stopping bot")
             return
@@ -503,26 +515,27 @@ def run_bot():
             logger.info("🔄 Initializing database...")
             db.init_database()
             
-            # Создаем приложение
+            # Создаем приложение с улучшенными настройками
             application = Application.builder().token(BOT_TOKEN).build()
-            application.add_error_handler(enhanced_error_handler)
             
-            # Добавляем обработчики
+            # Добавляем обработчик ошибок
+            application.add_error_handler(error_handler)
+            
+            # Добавляем обработчики команд
             setup_handlers(application)
             
-            logger.info("🚀 Starting bot polling (SINGLE INSTANCE)...")
+            logger.info("🚀 Starting bot polling...")
             
-            # Запускаем polling
+            # Запускаем polling с улучшенными настройками
             application.run_polling(
-                poll_interval=3.0,
-                timeout=20,
+                poll_interval=5.0,  # Увеличили интервал
+                timeout=30,
                 drop_pending_updates=True,
                 allowed_updates=['message', 'callback_query'],
-                bootstrap_retries=0,
+                bootstrap_retries=3,  # Добавили повторные попытки при запуске
                 close_loop=False
             )
             
-            # Если дошли сюда, бот завершился нормально
             logger.info("✅ Bot stopped normally")
             break
             
@@ -531,11 +544,13 @@ def run_bot():
             if "Conflict" in error_str:
                 logger.error(f"💥 CONFLICT DETECTED on attempt {attempt + 1}: {e}")
                 logger.info("🔄 This usually means another instance is running. Waiting...")
+            elif "Connection" in error_str or "Network" in error_str:
+                logger.error(f"🌐 NETWORK ERROR on attempt {attempt + 1}: {e}")
             else:
                 logger.error(f"❌ Bot crashed on attempt {attempt + 1}: {e}")
             
             if attempt < max_retries - 1 and not shutdown_manager.shutdown_event.is_set():
-                current_delay = min(retry_delay * (2 ** attempt), 300)
+                current_delay = min(retry_delay * (2 ** attempt), 300)  # Экспоненциальная задержка
                 logger.info(f"🔄 Restarting in {current_delay} seconds...")
                 for _ in range(current_delay):
                     if shutdown_manager.shutdown_event.is_set():
