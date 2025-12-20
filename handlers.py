@@ -1371,3 +1371,28 @@ async def recreate_content_command(update: Update, context: ContextTypes.DEFAULT
     except Exception as e:
         logger.error(f"Error recreating content: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Ошибка: {str(e)[:100]}")
+
+async def test_simple_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Простая тестовая команда"""
+    user = update.effective_user
+    
+    try:
+        # Просто отправляем тестовое сообщение
+        await update.message.reply_text(
+            f"✅ Тест успешен!\n"
+            f"🆔 Ваш ID: {user.id}\n"
+            f"📛 Имя: {user.first_name}",
+            parse_mode='Markdown'
+        )
+        
+        # Проверяем БД
+        conn = db.get_connection()
+        if conn:
+            await update.message.reply_text("✅ Подключение к БД: ОК")
+            conn.close()
+        else:
+            await update.message.reply_text("❌ Нет подключения к БД")
+            
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {str(e)[:100]}")
+
