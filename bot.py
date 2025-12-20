@@ -251,6 +251,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -579,6 +580,7 @@ def main():
     try:
         logger.info("🔄 Initializing database...")
         db.init_database()
+        logger.info("🔄 Initializing course content...")
         db.initialize_course_content()
 
         flask_thread = threading.Thread(target=run_flask_server, daemon=True)
@@ -621,8 +623,10 @@ def main():
         
     except Exception as e:
         logger.error(f"💥 Error in main: {e}")
+        import traceback
+        traceback.print_exc()  # Выводим полный traceback
     finally:
         logger.info("🛑 Bot application stopped")
-
+        
 if __name__ == '__main__':
     main()
