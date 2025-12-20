@@ -4,3 +4,4 @@ python-dotenv
 flask
 pytz
 requests
+schedule>=1.2.0
