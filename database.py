@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, date, timedelta
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import json
 
 logger = logging.getLogger(__name__)
 class DatabaseManager:
