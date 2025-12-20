@@ -671,4 +671,23 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    @staticmethod
+    def markdown_to_html(text):
+        """Конвертирует Markdown в HTML для Telegram"""
+        if not text:
+            return text
+        
+        import re
+        
+        # **жирный** -> <b>жирный</b>
+        text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+        # *курсив* -> <i>курсив</i>
+        text = re.sub(r'\*(.+?)\*', r'<i>\1</i>', text, flags=re.DOTALL)
+        # `код` -> <code>код</code>
+        text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
+        # [текст](ссылка) -> <a href="ссылка">текст</a>
+        text = re.sub(r'\[(.+?)\]\((.+?)\)', r'<a href="\2">\1</a>', text)
+        
+        return text
+
 db = DatabaseManager()

@@ -556,57 +556,39 @@ async def send_course_day1(user_id: int, application):
     print(f"📖 START send_course_day1 for user {user_id}")
     
     try:
-        # Получаем контент дня 1 из БД
-        print(f"📊 Getting course content for day 1")
         content = db.get_course_content(1)
         
         if content:
             messages = content['messages']
-            print(f"📋 Found content with {len(messages) if isinstance(messages, list) else 1} messages")
             
-            # Проверяем тип messages
             if isinstance(messages, list):
                 for i, message in enumerate(messages):
                     if message and str(message).strip():
                         try:
-                            print(f"📨 Sending message {i+1}/{len(messages)}")
-                            print(f"📄 Message preview: {str(message)[:100]}...")
+                            # Конвертируем в HTML
+                            html_message = db.markdown_to_html(str(message))
+                            print(f"📨 HTML message: {html_message[:100]}...")
                             
-                            # Просто отправляем с Markdown, без очистки
                             await application.bot.send_message(
                                 chat_id=user_id,
-                                text=str(message),
-                                parse_mode='Markdown'
+                                text=html_message,
+                                parse_mode='HTML'
                             )
                             await asyncio.sleep(1)
                         except Exception as e:
-                            print(f"❌ Error sending message {i+1} with Markdown: {e}")
-                            # Попробуем HTML
-                            try:
-                                html_message = str(message).replace('**', '<b>').replace('**', '</b>')
-                                await application.bot.send_message(
-                                    chat_id=user_id,
-                                    text=html_message,
-                                    parse_mode='HTML'
-                                )
-                            except Exception as e2:
-                                print(f"❌ Error with HTML: {e2}")
-                                # Отправляем без разметки
-                                await application.bot.send_message(
-                                    chat_id=user_id,
-                                    text=str(message),
-                                    parse_mode=None
-                                )
+                            print(f"Error: {e}")
+                            await application.bot.send_message(
+                                chat_id=user_id,
+                                text=str(message),
+                                parse_mode=None
+                            )
             
             print(f"✅ Day 1 sent to user {user_id}")
         else:
-            print(f"❌ No content for day 1")
             await send_fallback_day1(user_id, application)
         
     except Exception as e:
-        print(f"❌ Error in send_course_day1: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"Error: {e}")
 
 async def send_fallback_day1(user_id: int, application):
     """Запасной вариант отправки дня 1"""
