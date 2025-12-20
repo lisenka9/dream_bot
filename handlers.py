@@ -1307,11 +1307,11 @@ async def check_content_command(update: Update, context: ContextTypes.DEFAULT_TY
                 image_count = len(content.get('image_urls', []))
                 
                 days_info.append(
-                    f"📅 **День {day}:** {len(messages)} сообщений, "
+                    f"День {day}: {len(messages)} сообщений, "
                     f"картинки: {'✅' if has_images else '❌'} ({image_count})"
                 )
             else:
-                days_info.append(f"📅 **День {day}:** ❌ Нет контента")
+                days_info.append(f"День {day}: ❌ Нет контента")
         
         # Проверяем таблицу course_content
         conn = db.get_connection()
@@ -1322,19 +1322,20 @@ async def check_content_command(update: Update, context: ContextTypes.DEFAULT_TY
             conn.close()
             
             status_text = (
-                f"📊 **Статус контента курса:**\n\n"
+                f"📊 Статус контента курса:\n\n"
                 f"Всего дней в БД: {count}/7\n\n" +
                 "\n".join(days_info) +
-                f"\n\n🆔 Ваш ID: `{user.id}`"
+                f"\n\nID: {user.id}"
             )
         else:
             status_text = "❌ Нет подключения к БД"
         
-        await update.message.reply_text(status_text, parse_mode='Markdown')
+        # Отправляем без parse_mode
+        await update.message.reply_text(status_text)
         
     except Exception as e:
-        logging.error(f"Error in check_content: {e}")
-        await update.message.reply_text(f"❌ Ошибка: {e}")
+        error_msg = str(e).replace('*', '').replace('_', '').replace('`', "'")
+        await update.message.reply_text(f"❌ Ошибка: {error_msg[:100]}")
 
 async def recreate_content_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Пересоздает контент курса"""
@@ -1346,22 +1347,33 @@ async def recreate_content_command(update: Update, context: ContextTypes.DEFAULT
         return
     
     try:
+        # Отправляем простое сообщение без разметки
         await update.message.reply_text("🔄 Пересоздаю контент курса...")
         
-        # Вызываем функцию инициализации контента
+        # Очищаем старый контент
+        conn = db.get_connection()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM course_content")
+            conn.commit()
+            conn.close()
+            print("✅ Очищен старый контент")
+        
+        # Создаем новый контент
         db.initialize_course_content()
         
+        # Отправляем простое сообщение без Markdown
         await update.message.reply_text(
             "✅ Контент курса успешно пересоздан!\n\n"
-            "Используйте /check_content для проверки.",
-            parse_mode='Markdown'
+            "Используйте /check_content для проверки."
         )
         
-        print(f"✅ Контент пересоздан администратором {user.id}")  # Используем print вместо logger
+        print(f"✅ Контент пересоздан администратором {user.id}")
         
     except Exception as e:
-        print(f"Error recreating content: {e}")  # Используем print
-        await update.message.reply_text(f"❌ Ошибка: {str(e)[:200]}")
+        print(f"Error recreating content: {e}")
+        # Отправляем простое сообщение об ошибке
+        await update.message.reply_text(f"❌ Ошибка: {str(e)[:100]}")
 
 async def test_simple_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Простая тестовая команда"""
