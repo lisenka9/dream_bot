@@ -577,6 +577,10 @@ def main():
     logger.info("🚀 Starting Metaphor Bot (SINGLE INSTANCE)...")
     
     try:
+        logger.info("🔄 Initializing database...")
+        db.init_database()
+        db.initialize_course_content()
+
         flask_thread = threading.Thread(target=run_flask_server, daemon=True)
         flask_thread.start()
         logger.info("✅ Flask server started in thread")

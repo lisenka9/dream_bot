@@ -118,19 +118,24 @@ class DatabaseManager:
 
     def initialize_course_content(self):
         """Инициализирует контент 7-дневного курса с правильной структурой"""
+        print("🔄 Начинаю инициализацию контента курса...")  # Добавим print для отладки
+    
         conn = self.get_connection()
         if not conn:
+            print("❌ Нет подключения к БД")
             return
         
         try:
             cursor = conn.cursor()
             
-            # Проверяем, есть ли уже контент
+            # Сначала проверяем, есть ли уже контент
             cursor.execute("SELECT COUNT(*) FROM course_content")
             count = cursor.fetchone()[0]
             
+            print(f"📊 Найдено записей в course_content: {count}")
+            
             if count == 0:
-                logger.info("📝 Initializing course content with proper structure...")
+                print("📝 Создаю контент для дня 1...")
                 
                 # День 1 - 3 сообщения
                 day1_messages = [

@@ -1348,16 +1348,7 @@ async def recreate_content_command(update: Update, context: ContextTypes.DEFAULT
     try:
         await update.message.reply_text("🔄 Пересоздаю контент курса...")
         
-        # Очищаем старый контент
-        conn = db.get_connection()
-        if conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM course_content")
-            conn.commit()
-            conn.close()
-            logger.info("✅ Очищен старый контент")
-        
-        # Создаем новый контент
+        # Вызываем функцию инициализации контента
         db.initialize_course_content()
         
         await update.message.reply_text(
@@ -1366,11 +1357,11 @@ async def recreate_content_command(update: Update, context: ContextTypes.DEFAULT
             parse_mode='Markdown'
         )
         
-        logger.info(f"✅ Контент пересоздан администратором {user.id}")
+        print(f"✅ Контент пересоздан администратором {user.id}")  # Используем print вместо logger
         
     except Exception as e:
-        logger.error(f"Error recreating content: {e}", exc_info=True)
-        await update.message.reply_text(f"❌ Ошибка: {str(e)[:100]}")
+        print(f"Error recreating content: {e}")  # Используем print
+        await update.message.reply_text(f"❌ Ошибка: {str(e)[:200]}")
 
 async def test_simple_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Простая тестовая команда"""
