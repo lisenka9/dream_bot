@@ -106,11 +106,20 @@ class CourseScheduler:
                         await self.application.bot.send_message(
                             chat_id=user_id,
                             text=message,
-                            parse_mode='Markdown'
+                            parse_mode='Markdown'  # ВАЖНО: включаем Markdown
                         )
                         await asyncio.sleep(1)  # Задержка 1 секунда между сообщениями
                     except Exception as e:
                         logger.error(f"Error sending message {i+1} to {user_id}: {e}")
+                        # Попробуем отправить без разметки
+                        try:
+                            await self.application.bot.send_message(
+                                chat_id=user_id,
+                                text=message,
+                                parse_mode=None
+                            )
+                        except:
+                            pass
                 
                 # Если это пустое сообщение и есть картинки, отправляем картинку
                 elif has_images and image_index < len(image_urls):
@@ -135,7 +144,7 @@ class CourseScheduler:
                 
         except Exception as e:
             logger.error(f"❌ Error in send_course_day: {e}")
-    
+
     def update_user_progress(self, user_id: int, current_day: int):
         """Обновляет прогресс пользователя - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
         conn = self.db.get_connection()

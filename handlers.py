@@ -570,20 +570,31 @@ async def send_course_day1(user_id: int, application):
                     if message and str(message).strip():
                         try:
                             print(f"📨 Sending message {i+1}/{len(messages)}")
+                            
+                            # Всегда используем Markdown разметку
                             await application.bot.send_message(
                                 chat_id=user_id,
                                 text=str(message),
-                                parse_mode='Markdown' if "**" in str(message) else None
+                                parse_mode='Markdown'  # ВСЕГДА включаем Markdown
                             )
                             await asyncio.sleep(1)
                         except Exception as e:
                             print(f"❌ Error sending message {i+1}: {e}")
+                            # Попробуем отправить без разметки если ошибка
+                            try:
+                                await application.bot.send_message(
+                                    chat_id=user_id,
+                                    text=str(message),
+                                    parse_mode=None
+                                )
+                            except:
+                                pass
             else:
                 # Если messages не список, отправляем как одно сообщение
                 await application.bot.send_message(
                     chat_id=user_id,
                     text=str(messages),
-                    parse_mode='Markdown' if "**" in str(messages) else None
+                    parse_mode='Markdown'  # ВСЕГДА включаем Markdown
                 )
             
             print(f"✅ Day 1 sent to user {user_id}")
@@ -596,17 +607,6 @@ async def send_course_day1(user_id: int, application):
         print(f"❌ Error in send_course_day1: {e}")
         import traceback
         traceback.print_exc()
-        
-        # Пробуем отправить хотя бы простую версию
-        try:
-            await application.bot.send_message(
-                chat_id=user_id,
-                text="👋 **День 1: Разбуди своего Мечтателя!**\n\n"
-                     "К сожалению, произошла техническая ошибка при отправке полного контента.\n\n"
-                     "Мы уже работаем над исправлением. Попробуйте позже."
-            )
-        except:
-            pass
 
 async def send_fallback_day1(user_id: int, application):
     """Запасной вариант отправки дня 1"""
@@ -636,14 +636,14 @@ async def send_fallback_day1(user_id: int, application):
             await application.bot.send_message(
                 chat_id=user_id,
                 text=message,
-                parse_mode='Markdown'
+                parse_mode='Markdown'  # ВСЕГДА Markdown
             )
             await asyncio.sleep(1)
             
-        logging.info(f"✅ Fallback Day 1 sent to user {user_id}")
+        print(f"✅ Fallback Day 1 sent to user {user_id}")
         
     except Exception as e:
-        logging.error(f"❌ Error in fallback Day 1: {e}")
+        print(f"❌ Error in fallback Day 1: {e}")
 
 async def schedule_course_messages(user_id: int, application):
     """Планирует отправку 7-дневного курса"""
